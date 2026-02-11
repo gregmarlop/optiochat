@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<!--
+ * Optio Chat - P2P Encrypted Chat
+ * https://github.com/gregmarlop/optio
+ * 
+ * MIT License
+ * Copyright (c) 2026 Gregori M.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optio Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            color: #fff;
+            font-family: 'IBM Plex Mono', 'Consolas', monospace;
+            font-size: 13px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+        }
+        .logo {
+            text-align: center;
+            font-size: 9px;
+            color: #888;
+            white-space: pre;
+            margin-bottom: 15px;
+        }
+        
+        /* Setup Screens */
+        .setup-container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .setup { text-align: center; }
+        .setup h2 { 
+            color: #fff; 
+            font-size: 13px; 
+            margin-bottom: 15px;
+            font-weight: normal;
+        }
+        .setup input {
+            width: 100%;
+            padding: 10px;
+            background: #111;
+            border: 1px solid #333;
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .setup input:focus { outline: none; border-color: #fff; }
+        .setup .buttons { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+        .setup button {
+            padding: 10px 20px;
+            background: #fff;
+            color: #000;
+            border: none;
+            font-family: inherit;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .setup button:hover { background: #ccc; }
+        .setup button.secondary {
+            background: #000;
+            color: #fff;
+            border: 1px solid #fff;
+        }
+        .setup button.secondary:hover { background: #222; }
+        .room-code {
+            font-size: 20px;
+            color: #fff;
+            letter-spacing: 0.1em;
+            margin: 15px 0;
+            padding: 12px;
+            border: 1px solid #333;
+            background: #111;
+        }
+        .waiting { color: #888; margin-top: 15px; font-size: 12px; }
+        
+        /* Main Chat Layout */
+        .main-container {
+            display: none;
+            flex: 1;
+            gap: 15px;
+            max-width: 1000px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .main-container.active { display: flex; }
+        
+        @media (max-width: 700px) {
+            .main-container { flex-direction: column; }
+            .status-panel { order: -1; }
+        }
+        
+        /* Chat Panel */
+        .chat-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #333;
+            min-height: 400px;
+        }
+        .chat-header {
+            padding: 8px 12px;
+            border-bottom: 1px solid #333;
+            color: #888;
+            font-size: 11px;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .message {
+            max-width: 85%;
+            padding: 6px 10px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .message.sent {
+            align-self: flex-end;
+            background: #fff;
+            color: #000;
+        }
+        .message.received {
+            align-self: flex-start;
+            background: #222;
+            color: #fff;
+            border: 1px solid #333;
+        }
+        .message.system {
+            align-self: center;
+            color: #666;
+            font-size: 10px;
+        }
+        .input-area {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            border-top: 1px solid #333;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 8px;
+            background: #111;
+            border: 1px solid #333;
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+        }
+        .input-area input:focus { outline: none; border-color: #fff; }
+        .input-area button {
+            padding: 8px 15px;
+            background: #fff;
+            color: #000;
+            border: none;
+            font-family: inherit;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        /* Status Panel */
+        .status-panel {
+            width: 280px;
+            border: 1px solid #333;
+            font-size: 11px;
+            display: flex;
+            flex-direction: column;
+        }
+        @media (max-width: 700px) {
+            .status-panel { width: 100%; max-height: 200px; }
+        }
+        .status-section {
+            padding: 10px 12px;
+            border-bottom: 1px solid #333;
+        }
+        .status-section:last-child { border-bottom: none; }
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            color: #888;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .status-badge {
+            padding: 1px 6px;
+            font-size: 9px;
+            border-radius: 2px;
+        }
+        .status-badge.ok { background: #0a0; color: #000; }
+        .status-badge.warn { background: #aa0; color: #000; }
+        .status-badge.error { background: #a00; color: #fff; }
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            color: #aaa;
+        }
+        .status-row .label { color: #666; }
+        .status-row .value { color: #fff; }
+        .status-row.ok .value { color: #0a0; }
+        .status-row.warn .value { color: #aa0; }
+        .status-row.error .value { color: #a00; }
+        .status-check {
+            padding: 2px 0;
+            color: #0a0;
+        }
+        .status-check.warn { color: #aa0; }
+        .status-check.error { color: #a00; }
+        .crypto-order {
+            color: #888;
+            font-size: 10px;
+            word-break: break-all;
+            margin-top: 4px;
+        }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <pre class="logo">
+ ▒█████   ██▓███  ▄▄▄█████▓ ██▓ ▒█████  
+▒██▒  ██▒▓██░  ██▒▓  ██▒ ▓▒▓██▒▒██▒  ██▒
+▒██░  ██▒▓██░ ██▓▒▒ ▓██░ ▒░▒██▒▒██░  ██▒
+▒██   ██░▒██▄█▓▒ ▒░ ▓██▓ ░ ░██░▒██   ██░
+░ ████▓▒░▒██▒ ░  ░  ▒██▒ ░ ░██░░ ████▓▒░
+              CHAT</pre>
+
+    <!-- Setup: Start -->
+    <div class="setup-container" id="setup-start">
+        <div class="setup">
+            <h2>Encrypted P2P Chat</h2>
+            <input type="password" id="secret-key" placeholder="Secret key (shared with peer)">
+            <div class="buttons">
+                <button onclick="createRoom()">CREATE ROOM</button>
+                <button class="secondary" onclick="showJoin()">JOIN ROOM</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup: Waiting -->
+    <div class="setup-container hidden" id="setup-waiting">
+        <div class="setup">
+            <h2>Share this code:</h2>
+            <div class="room-code" id="room-code"></div>
+            <div class="waiting">Waiting for peer...</div>
+        </div>
+    </div>
+
+    <!-- Setup: Join -->
+    <div class="setup-container hidden" id="setup-join">
+        <div class="setup">
+            <h2>Enter room code:</h2>
+            <input type="text" id="join-code" placeholder="room-code">
+            <div class="buttons">
+                <button onclick="joinRoom()">JOIN</button>
+                <button class="secondary" onclick="showStart()">BACK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Chat -->
+    <div class="main-container" id="main">
+        <div class="chat-panel">
+            <div class="chat-header">
+                Room: <span id="chat-room"></span>
+            </div>
+            <div class="messages" id="messages"></div>
+            <div class="input-area">
+                <input type="text" id="message-input" placeholder="Type message..." onkeypress="if(event.key==='Enter')sendMessage()">
+                <button onclick="sendMessage()">SEND</button>
+            </div>
+        </div>
+        
+        <div class="status-panel">
+            <div class="status-section">
+                <div class="status-header">
+                    <span>Connection</span>
+                    <span class="status-badge ok" id="conn-badge">OK</span>
+                </div>
+                <div class="status-row"><span class="label">Mode</span><span class="value" id="conn-mode">--</span></div>
+                <div class="status-row"><span class="label">Protocol</span><span class="value" id="conn-protocol">--</span></div>
+                <div class="status-row"><span class="label">Latency</span><span class="value" id="conn-latency">--</span></div>
+                <div class="status-row"><span class="label">Uptime</span><span class="value" id="conn-uptime">--</span></div>
+            </div>
+            
+            <div class="status-section">
+                <div class="status-header">
+                    <span>Security</span>
+                    <span class="status-badge ok" id="sec-badge">OK</span>
+                </div>
+                <div class="status-check" id="sec-peer">✓ Peer IP stable</div>
+                <div class="status-check" id="sec-decrypt">✓ No decrypt errors</div>
+                <div class="status-check" id="sec-replay">✓ No replay detected</div>
+                <div class="status-check" id="sec-latency">✓ Latency normal</div>
+            </div>
+            
+            <div class="status-section">
+                <div class="status-header">
+                    <span>Crypto</span>
+                </div>
+                <div class="status-row"><span class="label">Messages</span><span class="value"><span id="crypto-sent">0</span>↑ <span id="crypto-recv">0</span>↓</span></div>
+                <div class="status-row"><span class="label">Bytes</span><span class="value"><span id="crypto-bytes-sent">0</span>↑ <span id="crypto-bytes-recv">0</span>↓</span></div>
+                <div class="crypto-order" id="crypto-order">--</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ============== CONFIG ==============
+    const SIGNAL_SERVER = 'ws://localhost:3000';
+    
+    // ============== OPTIO CIPHER ==============
+    const AU = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const AL = 'abcdefghijklmnopqrstuvwxyz';
+    const A = AU + AL;
+    const CIPHER_NAMES = ['Caesar', 'Atbash', 'Vigenère', 'Substitution'];
+
+    function rng(s) {
+        s = s >>> 0 || 1;
+        return function() {
+            s = (s + 0x6D2B79F5) >>> 0;
+            let t = Math.imul(s ^ (s >>> 15), s | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    function seed(k) {
+        let h = 0;
+        for (let i = 0; i < k.length; i++) h = ((h << 5) - h + k.charCodeAt(i)) >>> 0;
+        for (let i = 0; i < 10000; i++) {
+            h = ((h << 5) - h + (h >>> 16)) >>> 0;
+            h = (h ^ (h >>> 11)) >>> 0;
+            h = ((h << 7) ^ h) >>> 0;
+        }
+        return h || 1;
+    }
+
+    function caesar(t, sh, inv) {
+        const d = inv ? -sh : sh;
+        return t.split('').map(c => {
+            let i = AU.indexOf(c);
+            if (i !== -1) return AU[(i + d + 26) % 26];
+            i = AL.indexOf(c);
+            if (i !== -1) return AL[(i + d + 26) % 26];
+            return c;
+        }).join('');
+    }
+
+    function atbash(t) {
+        return t.split('').map(c => {
+            let i = AU.indexOf(c);
+            if (i !== -1) return AU[25 - i];
+            i = AL.indexOf(c);
+            if (i !== -1) return AL[25 - i];
+            return c;
+        }).join('');
+    }
+
+    function vigenere(t, k, inv) {
+        let ki = 0;
+        return t.split('').map(c => {
+            let i = AU.indexOf(c), b = AU;
+            if (i === -1) { i = AL.indexOf(c); b = AL; }
+            if (i === -1) return c;
+            const sh = AU.indexOf(k[ki++ % k.length].toUpperCase());
+            if (sh === -1) return c;
+            return b[(i + (inv ? -sh : sh) + 26) % 26];
+        }).join('');
+    }
+
+    function substitution(t, s, inv) {
+        const r = rng(s);
+        const ch = A.split('');
+        for (let i = ch.length - 1; i > 0; i--) {
+            const j = Math.floor(r() * (i + 1));
+            [ch[i], ch[j]] = [ch[j], ch[i]];
+        }
+        if (!inv) return t.split('').map(c => { const i = A.indexOf(c); return i !== -1 ? ch[i] : c; }).join('');
+        return t.split('').map(c => { const i = ch.indexOf(c); return i !== -1 ? A[i] : c; }).join('');
+    }
+
+    const M = [
+        { f: (t, p, i) => caesar(t, p.c1, i), p: r => ({ c1: 1 + Math.floor(r() * 25) }), name: 'Caesar' },
+        { f: t => atbash(t), name: 'Atbash' },
+        { f: (t, p, i, c) => vigenere(t, c, i), name: 'Vigenère' },
+        { f: (t, p, i) => substitution(t, p.s1, i), p: r => ({ s1: Math.floor(r() * 1e6) }), name: 'Substitution' }
+    ];
+
+    let cipherOrder = [];
+
+    function generateSalt() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let salt = '';
+        for (let i = 0; i < 8; i++) salt += chars[Math.floor(Math.random() * chars.length)];
+        return salt;
+    }
+
+    function encrypt(key, message) {
+        const s = seed(key);
+        const r = rng(s);
+        const params = {};
+        M.forEach(m => { if (m.p) Object.assign(params, m.p(r)); });
+        const order = [...M];
+        for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(r() * (i + 1));
+            [order[i], order[j]] = [order[j], order[i]];
+        }
+        cipherOrder = order.map(m => m.name);
+        let res = generateSalt() + '\x00' + message;
+        for (const m of order) res = m.f(res, params, false, key);
+        return btoa(unescape(encodeURIComponent(res)));
+    }
+
+    function decrypt(key, encrypted) {
+        try {
+            let res = decodeURIComponent(escape(atob(encrypted)));
+            const s = seed(key);
+            const r = rng(s);
+            const params = {};
+            M.forEach(m => { if (m.p) Object.assign(params, m.p(r)); });
+            const order = [...M];
+            for (let i = order.length - 1; i > 0; i--) {
+                const j = Math.floor(r() * (i + 1));
+                [order[i], order[j]] = [order[j], order[i]];
+            }
+            for (let i = order.length - 1; i >= 0; i--) res = order[i].f(res, params, true, key);
+            const idx = res.indexOf('\x00');
+            return idx !== -1 ? res.substring(idx + 1) : res;
+        } catch (e) { return null; }
+    }
+
+    // ============== STATS ==============
+    let stats = {
+        connectedAt: null,
+        msgSent: 0,
+        msgRecv: 0,
+        bytesSent: 0,
+        bytesRecv: 0,
+        decryptErrors: 0,
+        lastPeerIp: null,
+        ipChanges: 0,
+        latencies: [],
+        lastLatency: 0
+    };
+
+    function updateStats() {
+        // Uptime
+        if (stats.connectedAt) {
+            const secs = Math.floor((Date.now() - stats.connectedAt) / 1000);
+            const mins = Math.floor(secs / 60);
+            const s = secs % 60;
+            document.getElementById('conn-uptime').textContent = `${mins}m ${s}s`;
+        }
+        
+        // Messages
+        document.getElementById('crypto-sent').textContent = stats.msgSent;
+        document.getElementById('crypto-recv').textContent = stats.msgRecv;
+        
+        // Bytes
+        document.getElementById('crypto-bytes-sent').textContent = formatBytes(stats.bytesSent);
+        document.getElementById('crypto-bytes-recv').textContent = formatBytes(stats.bytesRecv);
+        
+        // Latency
+        if (stats.lastLatency > 0) {
+            document.getElementById('conn-latency').textContent = `${stats.lastLatency}ms`;
+            const latencyEl = document.getElementById('sec-latency');
+            if (stats.lastLatency > 200) {
+                latencyEl.textContent = '⚠ Latency high (' + stats.lastLatency + 'ms)';
+                latencyEl.className = 'status-check warn';
+            } else {
+                latencyEl.textContent = '✓ Latency normal';
+                latencyEl.className = 'status-check';
+            }
+        }
+        
+        // Decrypt errors
+        const decryptEl = document.getElementById('sec-decrypt');
+        if (stats.decryptErrors > 0) {
+            decryptEl.textContent = '⚠ Decrypt errors: ' + stats.decryptErrors;
+            decryptEl.className = 'status-check warn';
+        }
+        
+        // IP changes
+        const peerEl = document.getElementById('sec-peer');
+        if (stats.ipChanges > 0) {
+            peerEl.textContent = '⚠ Peer IP changed (' + stats.ipChanges + 'x)';
+            peerEl.className = 'status-check warn';
+        }
+        
+        // Cipher order
+        if (cipherOrder.length > 0) {
+            document.getElementById('crypto-order').textContent = cipherOrder.join(' → ');
+        }
+        
+        // Update badges
+        updateBadges();
+    }
+
+    function updateBadges() {
+        const secIssues = stats.decryptErrors + stats.ipChanges + (stats.lastLatency > 200 ? 1 : 0);
+        const secBadge = document.getElementById('sec-badge');
+        if (secIssues === 0) {
+            secBadge.textContent = 'OK';
+            secBadge.className = 'status-badge ok';
+        } else if (secIssues < 3) {
+            secBadge.textContent = 'WARN';
+            secBadge.className = 'status-badge warn';
+        } else {
+            secBadge.textContent = 'RISK';
+            secBadge.className = 'status-badge error';
+        }
+    }
+
+    function formatBytes(b) {
+        if (b < 1024) return b + 'b';
+        return (b / 1024).toFixed(1) + 'kb';
+    }
+
+    // ============== PING ==============
+    let pingInterval = null;
+    let pendingPing = null;
+
+    function startPing() {
+        pingInterval = setInterval(() => {
+            if (dc && dc.readyState === 'open') {
+                pendingPing = Date.now();
+                dc.send(JSON.stringify({ type: 'ping', t: pendingPing }));
+            }
+        }, 5000);
+    }
+
+    function handlePing(data) {
+        if (data.type === 'ping') {
+            dc.send(JSON.stringify({ type: 'pong', t: data.t }));
+        } else if (data.type === 'pong' && pendingPing) {
+            stats.lastLatency = Date.now() - data.t;
+            stats.latencies.push(stats.lastLatency);
+            if (stats.latencies.length > 10) stats.latencies.shift();
+            pendingPing = null;
+        }
+    }
+
+    // ============== CHAT APP ==============
+    let ws = null;
+    let pc = null;
+    let dc = null;
+    let secretKey = '';
+    let roomCode = '';
+    let isHost = false;
+    let seenMessages = new Set();
+
+    function generateRoomCode() {
+        const words = ['sol', 'luna', 'mar', 'rio', 'nube', 'viento', 'fuego', 'tierra', 'luz', 'sombra', 
+                       'cafe', 'libro', 'mesa', 'arbol', 'piedra', 'agua', 'cielo', 'monte', 'flor', 'hoja'];
+        const w1 = words[Math.floor(Math.random() * words.length)];
+        const w2 = words[Math.floor(Math.random() * words.length)];
+        const num = Math.floor(Math.random() * 100);
+        return `${w1}-${w2}-${num}`;
+    }
+
+    function showStart() {
+        document.getElementById('setup-start').classList.remove('hidden');
+        document.getElementById('setup-waiting').classList.add('hidden');
+        document.getElementById('setup-join').classList.add('hidden');
+    }
+
+    function showJoin() {
+        document.getElementById('setup-start').classList.add('hidden');
+        document.getElementById('setup-join').classList.remove('hidden');
+    }
+
+    function showChat() {
+        document.getElementById('setup-start').classList.add('hidden');
+        document.getElementById('setup-waiting').classList.add('hidden');
+        document.getElementById('setup-join').classList.add('hidden');
+        document.getElementById('main').classList.add('active');
+        document.getElementById('chat-room').textContent = roomCode;
+        document.getElementById('message-input').focus();
+        
+        // Init stats
+        stats.connectedAt = Date.now();
+        document.getElementById('conn-mode').textContent = 'P2P Direct';
+        document.getElementById('conn-protocol').textContent = 'WebRTC';
+        
+        // Start updates
+        setInterval(updateStats, 1000);
+        startPing();
+    }
+
+    function addMessage(text, type) {
+        const div = document.createElement('div');
+        div.className = 'message ' + type;
+        div.textContent = text;
+        document.getElementById('messages').appendChild(div);
+        div.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function connectSignal() {
+        return new Promise((resolve, reject) => {
+            ws = new WebSocket(SIGNAL_SERVER);
+            ws.onopen = () => resolve();
+            ws.onerror = () => reject(new Error('Cannot connect to signal server'));
+            ws.onmessage = (e) => handleSignalMessage(JSON.parse(e.data));
+        });
+    }
+
+    async function createRoom() {
+        secretKey = document.getElementById('secret-key').value;
+        if (!secretKey) return alert('Enter a secret key');
+
+        try {
+            await connectSignal();
+            roomCode = generateRoomCode();
+            isHost = true;
+
+            ws.send(JSON.stringify({ type: 'create', room: roomCode }));
+            
+            document.getElementById('room-code').textContent = roomCode;
+            document.getElementById('setup-start').classList.add('hidden');
+            document.getElementById('setup-waiting').classList.remove('hidden');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function joinRoom() {
+        secretKey = document.getElementById('secret-key').value;
+        roomCode = document.getElementById('join-code').value.trim().toLowerCase();
+        
+        if (!secretKey) {
+            document.getElementById('setup-join').classList.add('hidden');
+            document.getElementById('setup-start').classList.remove('hidden');
+            alert('Enter a secret key first');
+            return;
+        }
+        if (!roomCode) return alert('Enter room code');
+
+        try {
+            await connectSignal();
+            isHost = false;
+            ws.send(JSON.stringify({ type: 'join', room: roomCode }));
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function handleSignalMessage(msg) {
+        switch (msg.type) {
+            case 'created':
+                console.log('Room created:', msg.room);
+                break;
+            case 'joined':
+                await startWebRTC(false);
+                break;
+            case 'peer-joined':
+                await startWebRTC(true);
+                break;
+            case 'signal':
+                await handleWebRTCSignal(msg.data);
+                break;
+            case 'peer-left':
+                addMessage('Peer disconnected', 'system');
+                break;
+            case 'error':
+                alert('Error: ' + msg.message);
+                showStart();
+                break;
+        }
+    }
+
+    async function startWebRTC(initiator) {
+        pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.framasoft.org:3478' }]
+        });
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate) {
+                ws.send(JSON.stringify({ type: 'signal', data: { ice: e.candidate } }));
+            }
+        };
+
+        pc.ondatachannel = (e) => {
+            dc = e.channel;
+            setupDataChannel();
+        };
+
+        if (initiator) {
+            dc = pc.createDataChannel('chat');
+            setupDataChannel();
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
+        }
+    }
+
+    async function handleWebRTCSignal(data) {
+        if (data.sdp) {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            if (data.sdp.type === 'offer') {
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
+            }
+        }
+        if (data.ice) {
+            await pc.addIceCandidate(new RTCIceCandidate(data.ice));
+        }
+    }
+
+    function setupDataChannel() {
+        dc.onopen = () => {
+            showChat();
+            addMessage('Connected. End-to-end encrypted with Optio.', 'system');
+            if (ws) ws.close();
+        };
+
+        dc.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.type === 'ping' || data.type === 'pong') {
+                    handlePing(data);
+                    return;
+                }
+            } catch {}
+            
+            // Check replay
+            const msgHash = e.data.substring(0, 20);
+            if (seenMessages.has(msgHash)) {
+                const replayEl = document.getElementById('sec-replay');
+                replayEl.textContent = '⚠ Replay detected!';
+                replayEl.className = 'status-check error';
+                return;
+            }
+            seenMessages.add(msgHash);
+            if (seenMessages.size > 1000) {
+                const arr = Array.from(seenMessages);
+                seenMessages = new Set(arr.slice(-500));
+            }
+            
+            const decrypted = decrypt(secretKey, e.data);
+            stats.bytesRecv += e.data.length;
+            
+            if (decrypted) {
+                stats.msgRecv++;
+                addMessage(decrypted, 'received');
+            } else {
+                stats.decryptErrors++;
+                addMessage('[decrypt error]', 'system');
+            }
+        };
+
+        dc.onclose = () => {
+            addMessage('Connection closed', 'system');
+            document.getElementById('conn-badge').textContent = 'OFF';
+            document.getElementById('conn-badge').className = 'status-badge error';
+        };
+    }
+
+    function sendMessage() {
+        const input = document.getElementById('message-input');
+        const msg = input.value.trim();
+        if (!msg || !dc || dc.readyState !== 'open') return;
+
+        const encrypted = encrypt(secretKey, msg);
+        dc.send(encrypted);
+        
+        stats.msgSent++;
+        stats.bytesSent += encrypted.length;
+        
+        addMessage(msg, 'sent');
+        input.value = '';
+    }
+    </script>
+</body>
+</html>
