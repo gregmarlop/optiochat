@@ -3,6 +3,7 @@
  * Servidor de señalización robusto para WebRTC
  * 
  * Features:
+ * - HTTP health check para Fly.io
  * - Validación estricta de mensajes
  * - Room state machine (EMPTY → ONE_PEER → TWO_PEERS)
  * - Heartbeat + cleanup
@@ -12,24 +13,21 @@
  * MIT License - Copyright (c) 2026 Gregori M.
  */
 
+const http = require('http');
 const WebSocket = require('ws');
 
 // ============== CONFIG ==============
 const PORT = process.env.PORT || 3000;
-const HEARTBEAT_INTERVAL = 25000;  // 25s
-const HEARTBEAT_TIMEOUT = 35000;   // 35s sin respuesta = dead
-const MAX_MESSAGE_SIZE = 65536;    // 64KB
-const RATE_LIMIT_WINDOW = 1000;    // 1 segundo
-const RATE_LIMIT_MAX = 50;         // max mensajes por ventana
-const MAX_ROOM_AGE = 3600000;      // 1 hora max por sala
+const HEARTBEAT_INTERVAL = 25000;
+const HEARTBEAT_TIMEOUT = 35000;
+const MAX_MESSAGE_SIZE = 65536;
+const RATE_LIMIT_WINDOW = 1000;
+const RATE_LIMIT_MAX = 50;
+const MAX_ROOM_AGE = 3600000;
 
 // ============== STATE ==============
 const rooms = new Map();
-// Room structure: { host: ws, guest: ws, state: 'ONE'|'TWO', createdAt: Date, seenIds: Set }
-
-// Client metadata (WeakMap para no memory leak)
 const clients = new WeakMap();
-// Client structure: { roomCode: string, isHost: bool, lastPong: Date, msgCount: number, msgWindowStart: Date }
 
 // ============== HELPERS ==============
 function log(level, msg, data = {}) {
@@ -80,7 +78,6 @@ function cleanupRoom(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
     
-    // Notificar a peers restantes
     [room.host, room.guest].forEach(ws => {
         if (ws && ws.readyState === WebSocket.OPEN) {
             try {
@@ -100,7 +97,6 @@ function cleanupClient(ws) {
     const room = rooms.get(client.roomCode);
     if (!room) return;
     
-    // Notificar al otro peer
     const other = room.host === ws ? room.guest : room.host;
     if (other && other.readyState === WebSocket.OPEN) {
         try {
@@ -108,11 +104,9 @@ function cleanupClient(ws) {
         } catch (e) {}
     }
     
-    // Actualizar estado de sala
     if (room.host === ws) room.host = null;
     if (room.guest === ws) room.guest = null;
     
-    // Si sala vacía, limpiar
     if (!room.host && !room.guest) {
         rooms.delete(client.roomCode);
         log('info', 'Room deleted (empty)', { roomCode: client.roomCode });
@@ -121,29 +115,28 @@ function cleanupClient(ws) {
     }
 }
 
-// ============== SERVER ==============
+// ============== HTTP SERVER (Health Check) ==============
+const server = http.createServer((req, res) => {
+    if (req.url === '/health' || req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+            status: 'ok', 
+            rooms: rooms.size,
+            uptime: process.uptime()
+        }));
+    } else {
+        res.writeHead(404);
+        res.end('Not found');
+    }
+});
+
+// ============== WEBSOCKET SERVER ==============
 const wss = new WebSocket.Server({ 
-    port: PORT,
+    server,
     maxPayload: MAX_MESSAGE_SIZE
 });
 
-console.log(`
- ▒█████   ██▓███  ▄▄▄█████▓ ██▓ ▒█████  
-▒██▒  ██▒▓██░  ██▒▓  ██▒ ▓▒▓██▒▒██▒  ██▒
-▒██░  ██▒▓██░ ██▓▒▒ ▓██░ ▒░▒██▒▒██░  ██▒
-▒██   ██░▒██▄█▓▒ ▒░ ▓██▓ ░ ░██░▒██   ██░
-░ ████▓▒░▒██▒ ░  ░  ▒██▒ ░ ░██░░ ████▓▒░
-           SIGNAL SERVER v2.0
-
-[*] Port: ${PORT}
-[*] Max message: ${MAX_MESSAGE_SIZE} bytes
-[*] Rate limit: ${RATE_LIMIT_MAX} msgs/${RATE_LIMIT_WINDOW}ms
-[*] Heartbeat: ${HEARTBEAT_INTERVAL}ms
-[*] Debug: ${process.env.DEBUG ? 'ON' : 'OFF (set DEBUG=1)'}
-`);
-
 wss.on('connection', (ws) => {
-    // Inicializar metadata del cliente
     clients.set(ws, {
         id: generateId(),
         roomCode: null,
@@ -165,14 +158,12 @@ wss.on('connection', (ws) => {
         const client = clients.get(ws);
         if (!client) return;
         
-        // Rate limiting
         if (!checkRateLimit(client)) {
             ws.send(JSON.stringify({ type: 'error', message: 'Rate limited' }));
             log('warn', 'Rate limited', { clientId: client.id });
             return;
         }
         
-        // Parse
         let msg;
         try {
             msg = JSON.parse(rawData.toString());
@@ -181,7 +172,6 @@ wss.on('connection', (ws) => {
             return;
         }
         
-        // Validate
         const validation = validateMessage(msg);
         if (!validation.valid) {
             ws.send(JSON.stringify({ type: 'error', message: validation.error }));
@@ -238,7 +228,6 @@ wss.on('connection', (ws) => {
                 
                 ws.send(JSON.stringify({ type: 'joined', room: roomCode }));
                 
-                // Notificar al host
                 if (room.host && room.host.readyState === WebSocket.OPEN) {
                     room.host.send(JSON.stringify({ type: 'peer-joined' }));
                 }
@@ -256,7 +245,6 @@ wss.on('connection', (ws) => {
                 const room = rooms.get(client.roomCode);
                 if (!room) return;
                 
-                // Idempotencia: ignorar duplicados
                 const msgId = JSON.stringify(msg.data).substring(0, 100);
                 if (room.seenIds.has(msgId)) {
                     log('debug', 'Duplicate signal ignored', { clientId: client.id });
@@ -264,12 +252,10 @@ wss.on('connection', (ws) => {
                 }
                 room.seenIds.add(msgId);
                 if (room.seenIds.size > 200) {
-                    // Limpiar viejos
                     const arr = Array.from(room.seenIds);
                     room.seenIds = new Set(arr.slice(-100));
                 }
                 
-                // Enviar al otro peer
                 const target = room.host === ws ? room.guest : room.host;
                 if (target && target.readyState === WebSocket.OPEN) {
                     target.send(JSON.stringify({ type: 'signal', data: msg.data }));
@@ -285,7 +271,6 @@ wss.on('connection', (ws) => {
             }
             
             case 'pong': {
-                // Respuesta a nuestro ping (redundante con ws.pong pero útil para app)
                 client.lastPong = Date.now();
                 break;
             }
@@ -313,7 +298,6 @@ const heartbeatInterval = setInterval(() => {
         ws.isAlive = false;
         ws.ping();
         
-        // También enviar ping a nivel de app
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'ping' }));
         }
@@ -324,12 +308,10 @@ const heartbeatInterval = setInterval(() => {
 const roomCleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [code, room] of rooms) {
-        // Salas muy viejas
         if (now - room.createdAt > MAX_ROOM_AGE) {
             cleanupRoom(code);
             continue;
         }
-        // Salas sin peers activos
         const hostAlive = room.host && room.host.readyState === WebSocket.OPEN;
         const guestAlive = room.guest && room.guest.readyState === WebSocket.OPEN;
         if (!hostAlive && !guestAlive) {
@@ -338,6 +320,22 @@ const roomCleanupInterval = setInterval(() => {
         }
     }
 }, 60000);
+
+// ============== START SERVER ==============
+server.listen(PORT, () => {
+    console.log(`
+ ▒█████   ██▓███  ▄▄▄█████▓ ██▓ ▒█████  
+▒██▒  ██▒▓██░  ██▒▓  ██▒ ▓▒▓██▒▒██▒  ██▒
+▒██░  ██▒▓██░ ██▓▒▒ ▓██░ ▒░▒██▒▒██░  ██▒
+▒██   ██░▒██▄█▓▒ ▒░ ▓██▓ ░ ░██░▒██   ██░
+░ ████▓▒░▒██▒ ░  ░  ▒██▒ ░ ░██░░ ████▓▒░
+           SIGNAL SERVER v2.0
+
+[*] Port: ${PORT}
+[*] Health: http://localhost:${PORT}/health
+[*] Debug: ${process.env.DEBUG ? 'ON' : 'OFF (set DEBUG=1)'}
+`);
+});
 
 // ============== GRACEFUL SHUTDOWN ==============
 process.on('SIGTERM', () => {
@@ -350,7 +348,7 @@ process.on('SIGTERM', () => {
         ws.close();
     });
     
-    wss.close(() => {
+    server.close(() => {
         console.log('[*] Server closed');
         process.exit(0);
     });
