@@ -180,19 +180,6 @@ This tool is for:
 6. Decrypted on arrival using shared secret key
 7. Status panel monitors connection health in real-time
 
-## Contributing
-
-Ideas for improvement:
-
-- [ ] File sharing over data channel
-- [ ] Voice/video (WebRTC already supports it)
-- [ ] Mobile-friendly UI
-- [ ] QR code for room sharing
-- [ ] Tor hidden service for signal server
-- [ ] Custom STUN/TURN configuration
-
-PRs welcome.
-
 ## License
 
 MIT License
