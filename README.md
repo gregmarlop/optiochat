@@ -39,7 +39,7 @@ YOU ◄════════════════════► FRIEND
 
 ```bash
 # Clone
-git clone https://github.com/gregmarlop/optio-chat.git
+git clone https://github.com/gregmarlop/optiochat.git
 cd optio-chat
 
 # Install dependency
@@ -166,15 +166,9 @@ const SIGNAL_SERVER = 'wss://your-server.fly.dev';
 
 This tool is for:
 
-- Private conversations between consenting parties
+- Private conversations between  parties
 - Learning about P2P and encryption
 - Situations where you don't trust central servers
-
-Not for:
-
-- Illegal activity
-- Evading legitimate oversight
-- Being a jerk
 
 ## How It Works
 
