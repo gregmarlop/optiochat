@@ -328,20 +328,19 @@ const roomCleanupInterval = setInterval(() => {
     
     for (const [code, room] of rooms) {
         if (now - room.createdAt > MAX_ROOM_AGE) {
-            roomsToDelete.push(code);
+            roomsToDelete.push({ code, cleanup: true });
             continue;
         }
         const hostAlive = room.host && room.host.readyState === WebSocket.OPEN;
         const guestAlive = room.guest && room.guest.readyState === WebSocket.OPEN;
         if (!hostAlive && !guestAlive) {
-            roomsToDelete.push(code);
+            roomsToDelete.push({ code, cleanup: false });
         }
     }
     
     // Delete rooms after iteration
-    roomsToDelete.forEach(code => {
-        const room = rooms.get(code);
-        if (room && now - room.createdAt > MAX_ROOM_AGE) {
+    roomsToDelete.forEach(({ code, cleanup }) => {
+        if (cleanup) {
             cleanupRoom(code);
         } else {
             rooms.delete(code);

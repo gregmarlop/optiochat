@@ -805,7 +805,6 @@
     }
 
     // ============== PING ==============
-    let pingInterval = null;
     let pendingPing = null;
 
     // Hash function for message deduplication
@@ -1222,14 +1221,16 @@
             const decrypted = decrypt(secretKey, e.data);
             stats.bytesRecv += e.data.length;
             
-            if (decrypted !== null && decrypted !== '') {
+            // Check for valid decrypted message (null means error, empty string is valid)
+            if (decrypted != null && decrypted !== '') {
                 stats.msgRecv++;
                 addMessage(decrypted, 'received');
-            } else {
+            } else if (decrypted === null) {
                 stats.decryptErrors++;
                 debug('Decrypt error', 'error');
                 addMessage('[decrypt error]', 'error');
             }
+            // Empty string is valid but we don't add it as a message
         };
 
         dc.onclose = () => {
