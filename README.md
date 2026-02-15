@@ -167,7 +167,3 @@ MIT License
 ## Author
 
 Gregori M.
-
----
-
-*Built for curiosity, not for secrets.*
