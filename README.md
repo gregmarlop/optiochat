@@ -87,7 +87,7 @@ Ciphertext
      │  1. Connect to signal server           │
      ▼                                        ▼
 ┌─────────────────────────────────────────────────────┐
-│                  Signal Server                       │
+│                 Signal Server                       │
 │  • Facilitates WebRTC handshake                     │
 │  • Sees only: room codes, encrypted SDP offers      │
 │  • Stores nothing, logs nothing                     │
@@ -99,7 +99,7 @@ Ciphertext
      │  3. Establish P2P connection           │
      ▼                                        ▼
 ┌─────────────────────────────────────────────────────┐
-│              Direct P2P (WebRTC)                     │
+│             Direct P2P (WebRTC)                     │
 │  • Server no longer involved                        │
 │  • All messages: 5-layer encrypted                  │
 │  • Transport: DTLS (additional layer)               │
