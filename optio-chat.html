@@ -835,11 +835,18 @@
         if (data.type === 'ping') {
             try {
                 dc.send(JSON.stringify({ type: 'pong', t: data.t }));
-            } catch (e) {}
+            } catch (e) {
+                debug('Failed to send pong: ' + e.message, 'warn');
+            }
         } else if (data.type === 'pong' && pendingPing) {
-            stats.lastLatency = Date.now() - data.t;
-            stats.latencies.push(stats.lastLatency);
-            if (stats.latencies.length > 10) stats.latencies.shift();
+            // Validate timestamp to prevent NaN latencies
+            if (typeof data.t === 'number' && data.t > 0 && data.t < Date.now()) {
+                stats.lastLatency = Date.now() - data.t;
+                stats.latencies.push(stats.lastLatency);
+                if (stats.latencies.length > 10) stats.latencies.shift();
+            } else {
+                debug('Invalid pong timestamp', 'warn');
+            }
             pendingPing = null;
         }
     }
