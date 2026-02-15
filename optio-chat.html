@@ -593,11 +593,15 @@
         lastLatency: 0
     };
     
+    // Intervals
+    let statsInterval = null;
+    let pingInterval = null;
+    
     // Debug
     const debugLog = [];
     
     function debug(msg, level = 'info') {
-        const entry = { ts: new Date().toISOString().substr(11, 8), msg, level };
+        const entry = { ts: new Date().toISOString().slice(11, 19), msg, level };
         debugLog.push(entry);
         if (debugLog.length > 50) debugLog.shift();
         updateDebugLog();
@@ -646,7 +650,8 @@
         document.getElementById('chat-room').textContent = roomCode;
         enableChat(true);
         stats.connectedAt = Date.now();
-        setInterval(updateStats, 1000);
+        if (statsInterval) clearInterval(statsInterval);
+        statsInterval = setInterval(updateStats, 1000);
         startPing();
     }
     
@@ -802,6 +807,18 @@
     // ============== PING ==============
     let pingInterval = null;
     let pendingPing = null;
+
+    // Hash function for message deduplication
+    function hashMessage(msg) {
+        let h = 0;
+        for (let i = 0; i < msg.length; i++) {
+            h = ((h << 5) - h + msg.charCodeAt(i)) >>> 0;
+        }
+        // Additional mixing to reduce collisions
+        h = (h ^ (h >>> 16)) >>> 0;
+        h = ((h << 7) ^ h) >>> 0;
+        return h.toString(36);
+    }
 
     function startPing() {
         if (pingInterval) clearInterval(pingInterval);
@@ -966,7 +983,13 @@
                 break;
                 
             case 'ping':
-                ws.send(JSON.stringify({ type: 'pong' }));
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(JSON.stringify({ type: 'pong' }));
+                    } catch (e) {
+                        debug('Failed to send pong: ' + e.message, 'warn');
+                    }
+                }
                 break;
                 
             case 'error':
@@ -1017,9 +1040,11 @@
                     break;
                 case 'disconnected':
                     debug('ICE disconnected', 'warn');
+                    // Capture current pc reference to avoid race condition
+                    const currentPc = pc;
                     // Esperar un poco antes de intentar reconectar
                     setTimeout(() => {
-                        if (pc && pc.iceConnectionState === 'disconnected') {
+                        if (currentPc && currentPc === pc && currentPc.iceConnectionState === 'disconnected') {
                             attemptReconnect();
                         }
                     }, 3000);
@@ -1083,12 +1108,19 @@
                 // Drain ICE candidate queue
                 while (iceCandidateQueue.length > 0) {
                     const candidate = iceCandidateQueue.shift();
-                    await pc.addIceCandidate(candidate);
+                    try {
+                        await pc.addIceCandidate(candidate);
+                    } catch (e) {
+                        debug('Failed to add queued ICE candidate: ' + e.message, 'warn');
+                    }
                 }
                 
                 if (description.type === 'offer') {
+                    if (!pc) return;
                     await pc.setLocalDescription();
-                    ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
+                    }
                 }
             }
             
@@ -1102,6 +1134,7 @@
                         iceCandidateQueue.push(new RTCIceCandidate(data.ice));
                     }
                 } catch (e) {
+                    debug('ICE candidate error: ' + e.message, 'warn');
                     if (!ignoreOffer) throw e;
                 }
             }
@@ -1171,8 +1204,8 @@
                 }
             } catch {}
             
-            // Replay detection
-            const msgHash = e.data.substring(0, 20);
+            // Replay detection with proper hash
+            const msgHash = hashMessage(e.data);
             if (seenMessages.has(msgHash)) {
                 const replayEl = document.getElementById('sec-replay');
                 replayEl.textContent = '⚠ Replay detected!';
@@ -1189,7 +1222,7 @@
             const decrypted = decrypt(secretKey, e.data);
             stats.bytesRecv += e.data.length;
             
-            if (decrypted) {
+            if (decrypted !== null && decrypted !== '') {
                 stats.msgRecv++;
                 addMessage(decrypted, 'received');
             } else {

@@ -45,6 +45,17 @@ function generateId() {
     return Math.random().toString(36).substring(2, 10);
 }
 
+function hashSignal(data) {
+    const str = JSON.stringify(data);
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) - h + str.charCodeAt(i)) >>> 0;
+    }
+    h = (h ^ (h >>> 16)) >>> 0;
+    h = ((h << 7) ^ h) >>> 0;
+    return h.toString(36);
+}
+
 function validateMessage(data) {
     if (!data || typeof data !== 'object') return { valid: false, error: 'Invalid JSON' };
     if (!data.type || typeof data.type !== 'string') return { valid: false, error: 'Missing type' };
@@ -82,7 +93,9 @@ function cleanupRoom(roomCode) {
         if (ws && ws.readyState === WebSocket.OPEN) {
             try {
                 ws.send(JSON.stringify({ type: 'room-closed' }));
-            } catch (e) {}
+            } catch (e) {
+                log('warn', 'Failed to send room-closed message', { error: e.message });
+            }
         }
     });
     
@@ -101,7 +114,9 @@ function cleanupClient(ws) {
     if (other && other.readyState === WebSocket.OPEN) {
         try {
             other.send(JSON.stringify({ type: 'peer-left' }));
-        } catch (e) {}
+        } catch (e) {
+            log('warn', 'Failed to send peer-left message', { error: e.message });
+        }
     }
     
     if (room.host === ws) room.host = null;
@@ -245,7 +260,7 @@ wss.on('connection', (ws) => {
                 const room = rooms.get(client.roomCode);
                 if (!room) return;
                 
-                const msgId = JSON.stringify(msg.data).substring(0, 100);
+                const msgId = hashSignal(msg.data);
                 if (room.seenIds.has(msgId)) {
                     log('debug', 'Duplicate signal ignored', { clientId: client.id });
                     return;
@@ -278,8 +293,10 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
+        const client = clients.get(ws);
+        const clientId = client?.id;
         cleanupClient(ws);
-        log('debug', 'Client disconnected', { clientId: clients.get(ws)?.id });
+        log('debug', 'Client disconnected', { clientId });
     });
     
     ws.on('error', (err) => {
@@ -307,18 +324,30 @@ const heartbeatInterval = setInterval(() => {
 // ============== ROOM CLEANUP ==============
 const roomCleanupInterval = setInterval(() => {
     const now = Date.now();
+    const roomsToDelete = [];
+    
     for (const [code, room] of rooms) {
         if (now - room.createdAt > MAX_ROOM_AGE) {
-            cleanupRoom(code);
+            roomsToDelete.push(code);
             continue;
         }
         const hostAlive = room.host && room.host.readyState === WebSocket.OPEN;
         const guestAlive = room.guest && room.guest.readyState === WebSocket.OPEN;
         if (!hostAlive && !guestAlive) {
+            roomsToDelete.push(code);
+        }
+    }
+    
+    // Delete rooms after iteration
+    roomsToDelete.forEach(code => {
+        const room = rooms.get(code);
+        if (room && now - room.createdAt > MAX_ROOM_AGE) {
+            cleanupRoom(code);
+        } else {
             rooms.delete(code);
             log('info', 'Room cleaned (no peers)', { roomCode: code });
         }
-    }
+    });
 }, 60000);
 
 // ============== START SERVER ==============
@@ -344,12 +373,22 @@ process.on('SIGTERM', () => {
     clearInterval(roomCleanupInterval);
     
     wss.clients.forEach(ws => {
-        ws.send(JSON.stringify({ type: 'server-shutdown' }));
-        ws.close();
+        try {
+            ws.send(JSON.stringify({ type: 'server-shutdown' }));
+            ws.close();
+        } catch (e) {
+            log('warn', 'Failed to notify client of shutdown', { error: e.message });
+        }
     });
     
     server.close(() => {
         console.log('[*] Server closed');
         process.exit(0);
     });
+    
+    // Force exit after 5 seconds if graceful shutdown fails
+    setTimeout(() => {
+        console.log('[*] Forcing shutdown after timeout');
+        process.exit(1);
+    }, 5000);
 });
