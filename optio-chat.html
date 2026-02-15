@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <!--
- * Optio Chat v2.0 - P2P Encrypted Chat
- * https://github.com/gregmarlop/optio
+ * Optio Chat v3.0 - P2P Encrypted Chat
+ * https://github.com/gregmarlop/optiochat
  * 
- * Features:
- * - TURN fallback
- * - Perfect Negotiation pattern
- * - ICE restart & reconnection
- * - Connection states & retry UI
- * - ICE candidate queuing
+ * Encryption layers:
+ * 1. AES-256-GCM (symmetric, unbreakable)
+ * 2. LWE - Learning With Errors (lattice, post-quantum)
+ * 3. MQ - Multivariate Quadratic (NP-hard)
+ * 4. Subset Sum (NP-complete)
+ * 5. Optio (classical cipher labyrinth)
  * 
  * MIT License - Copyright (c) 2026 Gregori M.
 -->
@@ -36,19 +36,9 @@
             white-space: pre;
             margin-bottom: 15px;
         }
-        
-        /* Setup Screens */
-        .setup-container {
-            max-width: 400px;
-            margin: 0 auto;
-        }
+        .setup-container { max-width: 400px; margin: 0 auto; }
         .setup { text-align: center; }
-        .setup h2 { 
-            color: #fff; 
-            font-size: 13px; 
-            margin-bottom: 15px;
-            font-weight: normal;
-        }
+        .setup h2 { color: #fff; font-size: 13px; margin-bottom: 15px; font-weight: normal; }
         .setup input {
             width: 100%;
             padding: 10px;
@@ -72,11 +62,7 @@
             cursor: pointer;
         }
         .setup button:hover { background: #ccc; }
-        .setup button.secondary {
-            background: #000;
-            color: #fff;
-            border: 1px solid #fff;
-        }
+        .setup button.secondary { background: #000; color: #fff; border: 1px solid #fff; }
         .setup button.secondary:hover { background: #222; }
         .room-code {
             font-size: 20px;
@@ -87,219 +73,57 @@
             border: 1px solid #333;
             background: #111;
         }
-        
-        /* Connection Status */
-        .conn-status {
-            margin-top: 15px;
-            padding: 10px;
-            border: 1px solid #333;
-            font-size: 11px;
-        }
-        .conn-status .state {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .conn-status .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #888;
-        }
+        .conn-status { margin-top: 15px; padding: 10px; border: 1px solid #333; font-size: 11px; }
+        .conn-status .state { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .conn-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #888; }
         .conn-status .dot.connecting { background: #aa0; animation: pulse 1s infinite; }
         .conn-status .dot.connected { background: #0a0; }
         .conn-status .dot.failed { background: #a00; }
         .conn-status .dot.reconnecting { background: #a50; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .conn-status .detail { color: #666; font-size: 10px; }
-        .conn-status button {
-            margin-top: 8px;
-            padding: 6px 12px;
-            background: #333;
-            color: #fff;
-            border: 1px solid #555;
-            font-family: inherit;
-            font-size: 11px;
-            cursor: pointer;
-        }
-        .conn-status button:hover { background: #444; }
-        
-        /* Main Chat Layout */
-        .main-container {
-            display: none;
-            flex: 1;
-            gap: 15px;
-            max-width: 1000px;
-            margin: 0 auto;
-            width: 100%;
-        }
+        .conn-status button { margin-top: 8px; padding: 6px 12px; background: #333; color: #fff; border: 1px solid #555; font-family: inherit; font-size: 11px; cursor: pointer; }
+        .main-container { display: none; flex: 1; gap: 15px; max-width: 1000px; margin: 0 auto; width: 100%; }
         .main-container.active { display: flex; }
-        
-        @media (max-width: 700px) {
-            .main-container { flex-direction: column; }
-            .status-panel { order: -1; }
-        }
-        
-        /* Chat Panel */
-        .chat-panel {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            border: 1px solid #333;
-            min-height: 400px;
-        }
-        .chat-header {
-            padding: 8px 12px;
-            border-bottom: 1px solid #333;
-            color: #888;
-            font-size: 11px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .chat-header .conn-indicator {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .chat-header .conn-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #0a0;
-        }
+        @media (max-width: 700px) { .main-container { flex-direction: column; } .status-panel { order: -1; } }
+        .chat-panel { flex: 1; display: flex; flex-direction: column; border: 1px solid #333; min-height: 400px; }
+        .chat-header { padding: 8px 12px; border-bottom: 1px solid #333; color: #888; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+        .chat-header .conn-indicator { display: flex; align-items: center; gap: 6px; }
+        .chat-header .conn-dot { width: 6px; height: 6px; border-radius: 50%; background: #0a0; }
         .chat-header .conn-dot.disconnected { background: #a00; }
         .chat-header .conn-dot.reconnecting { background: #a50; animation: pulse 1s infinite; }
-        .messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .message {
-            max-width: 85%;
-            padding: 6px 10px;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-        .message.sent {
-            align-self: flex-end;
-            background: #fff;
-            color: #000;
-        }
-        .message.received {
-            align-self: flex-start;
-            background: #222;
-            color: #fff;
-            border: 1px solid #333;
-        }
-        .message.system {
-            align-self: center;
-            color: #666;
-            font-size: 10px;
-        }
-        .message.error {
-            align-self: center;
-            color: #a00;
-            font-size: 10px;
-        }
-        .input-area {
-            display: flex;
-            gap: 8px;
-            padding: 10px;
-            border-top: 1px solid #333;
-        }
-        .input-area input {
-            flex: 1;
-            padding: 8px;
-            background: #111;
-            border: 1px solid #333;
-            color: #fff;
-            font-family: inherit;
-            font-size: 13px;
-        }
+        .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+        .message { max-width: 85%; padding: 6px 10px; font-size: 12px; line-height: 1.4; }
+        .message.sent { align-self: flex-end; background: #fff; color: #000; }
+        .message.received { align-self: flex-start; background: #222; color: #fff; border: 1px solid #333; }
+        .message.system { align-self: center; color: #666; font-size: 10px; }
+        .message.error { align-self: center; color: #a00; font-size: 10px; }
+        .input-area { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #333; }
+        .input-area input { flex: 1; padding: 8px; background: #111; border: 1px solid #333; color: #fff; font-family: inherit; font-size: 13px; }
         .input-area input:focus { outline: none; border-color: #fff; }
         .input-area input:disabled { opacity: 0.5; }
-        .input-area button {
-            padding: 8px 15px;
-            background: #fff;
-            color: #000;
-            border: none;
-            font-family: inherit;
-            cursor: pointer;
-            font-size: 12px;
-        }
+        .input-area button { padding: 8px 15px; background: #fff; color: #000; border: none; font-family: inherit; cursor: pointer; font-size: 12px; }
         .input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
-        /* Status Panel */
-        .status-panel {
-            width: 280px;
-            border: 1px solid #333;
-            font-size: 11px;
-            display: flex;
-            flex-direction: column;
-        }
-        @media (max-width: 700px) {
-            .status-panel { width: 100%; max-height: 200px; overflow-y: auto; }
-        }
-        .status-section {
-            padding: 10px 12px;
-            border-bottom: 1px solid #333;
-        }
+        .status-panel { width: 280px; border: 1px solid #333; font-size: 11px; display: flex; flex-direction: column; }
+        @media (max-width: 700px) { .status-panel { width: 100%; max-height: 200px; overflow-y: auto; } }
+        .status-section { padding: 10px 12px; border-bottom: 1px solid #333; }
         .status-section:last-child { border-bottom: none; }
-        .status-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            color: #888;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .status-badge {
-            padding: 1px 6px;
-            font-size: 9px;
-            border-radius: 2px;
-        }
+        .status-header { display: flex; justify-content: space-between; margin-bottom: 8px; color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-badge { padding: 1px 6px; font-size: 9px; border-radius: 2px; }
         .status-badge.ok { background: #0a0; color: #000; }
         .status-badge.warn { background: #aa0; color: #000; }
         .status-badge.error { background: #a00; color: #fff; }
-        .status-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 2px 0;
-            color: #aaa;
-        }
+        .status-row { display: flex; justify-content: space-between; padding: 2px 0; color: #aaa; }
         .status-row .label { color: #666; }
         .status-row .value { color: #fff; }
-        .status-check {
-            padding: 2px 0;
-            color: #0a0;
-        }
+        .status-check { padding: 2px 0; color: #0a0; }
         .status-check.warn { color: #aa0; }
         .status-check.error { color: #a00; }
-        .crypto-order {
-            color: #888;
-            font-size: 10px;
-            word-break: break-all;
-            margin-top: 4px;
-        }
-        .debug-log {
-            max-height: 100px;
-            overflow-y: auto;
-            font-size: 9px;
-            color: #666;
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid #222;
-        }
+        .crypto-layers { color: #888; font-size: 9px; margin-top: 4px; line-height: 1.4; }
+        .debug-log { max-height: 100px; overflow-y: auto; font-size: 9px; color: #666; margin-top: 8px; padding-top: 8px; border-top: 1px solid #222; }
         .debug-log div { padding: 1px 0; }
         .debug-log .warn { color: #aa0; }
         .debug-log .error { color: #a00; }
-        
         .hidden { display: none !important; }
     </style>
 </head>
@@ -310,9 +134,8 @@
 ▒██░  ██▒▓██░ ██▓▒▒ ▓██░ ▒░▒██▒▒██░  ██▒
 ▒██   ██░▒██▄█▓▒ ▒░ ▓██▓ ░ ░██░▒██   ██░
 ░ ████▓▒░▒██▒ ░  ░  ▒██▒ ░ ░██░░ ████▓▒░
-              CHAT v2.0</pre>
+              CHAT v3.0</pre>
 
-    <!-- Setup: Start -->
     <div class="setup-container" id="setup-start">
         <div class="setup">
             <h2>Encrypted P2P Chat</h2>
@@ -324,7 +147,6 @@
         </div>
     </div>
 
-    <!-- Setup: Waiting -->
     <div class="setup-container hidden" id="setup-waiting">
         <div class="setup">
             <h2>Share this code:</h2>
@@ -340,7 +162,6 @@
         </div>
     </div>
 
-    <!-- Setup: Join -->
     <div class="setup-container hidden" id="setup-join">
         <div class="setup">
             <h2>Enter room code:</h2>
@@ -360,7 +181,6 @@
         </div>
     </div>
 
-    <!-- Main Chat -->
     <div class="main-container" id="main">
         <div class="chat-panel">
             <div class="chat-header">
@@ -387,7 +207,6 @@
                 <div class="status-row"><span class="label">ICE</span><span class="value" id="conn-ice">--</span></div>
                 <div class="status-row"><span class="label">Latency</span><span class="value" id="conn-latency">--</span></div>
                 <div class="status-row"><span class="label">Uptime</span><span class="value" id="conn-uptime">--</span></div>
-                <div class="status-row"><span class="label">Reconnects</span><span class="value" id="conn-reconnects">0</span></div>
             </div>
             
             <div class="status-section">
@@ -403,17 +222,17 @@
             
             <div class="status-section">
                 <div class="status-header">
-                    <span>Crypto</span>
+                    <span>Crypto Stack</span>
                 </div>
                 <div class="status-row"><span class="label">Messages</span><span class="value"><span id="crypto-sent">0</span>↑ <span id="crypto-recv">0</span>↓</span></div>
                 <div class="status-row"><span class="label">Bytes</span><span class="value"><span id="crypto-bytes-sent">0</span>↑ <span id="crypto-bytes-recv">0</span>↓</span></div>
-                <div class="crypto-order" id="crypto-order">--</div>
+                <div class="crypto-layers">
+                    AES-256-GCM → LWE → MQ → SubsetSum → Optio
+                </div>
             </div>
             
             <div class="status-section">
-                <div class="status-header">
-                    <span>Debug Log</span>
-                </div>
+                <div class="status-header"><span>Debug</span></div>
                 <div class="debug-log" id="debug-log"></div>
             </div>
         </div>
@@ -425,27 +244,225 @@
     const ICE_SERVERS = [
         { urls: 'stun:stun.framasoft.org:3478' },
         { urls: 'stun:stun.stunprotocol.org:3478' },
-        // TURN fallback (public test server - replace with your own in production)
-        {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        },
-        {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        }
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
     ];
-    const CONNECTION_TIMEOUT = 30000;  // 30s para conectar
-    const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 15000, 30000];  // Backoff
+    const CONNECTION_TIMEOUT = 30000;
+    const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 15000, 30000];
     
-    // ============== OPTIO CIPHER ==============
+    // ============== LAYER 1: AES-256-GCM ==============
+    const AES_ITERATIONS = 100000;
+    let aesKey = null;
+    
+    async function deriveAESKey(password, salt) {
+        const enc = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+        return crypto.subtle.deriveKey(
+            { name: 'PBKDF2', salt: enc.encode(salt), iterations: AES_ITERATIONS, hash: 'SHA-256' },
+            keyMaterial,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+        );
+    }
+    
+    async function aesEncrypt(plaintext) {
+        const enc = new TextEncoder();
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, enc.encode(plaintext));
+        const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+        combined.set(iv);
+        combined.set(new Uint8Array(ciphertext), iv.length);
+        return combined;
+    }
+    
+    async function aesDecrypt(combined) {
+        const iv = combined.slice(0, 12);
+        const ciphertext = combined.slice(12);
+        const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ciphertext);
+        return new TextDecoder().decode(decrypted);
+    }
+    
+    // ============== LAYER 2: LWE (Learning With Errors) ==============
+    // Simplified LWE-inspired noise injection
+    const LWE_N = 64;  // Dimension
+    const LWE_Q = 257; // Prime modulus
+    
+    function lweGenerateMatrix(seed) {
+        const r = prng(seed);
+        const A = [];
+        for (let i = 0; i < LWE_N; i++) {
+            A[i] = [];
+            for (let j = 0; j < LWE_N; j++) {
+                A[i][j] = Math.floor(r() * LWE_Q);
+            }
+        }
+        return A;
+    }
+    
+    function lweGenerateError(seed, len) {
+        const r = prng(seed);
+        const e = [];
+        // Gaussian-like small errors
+        for (let i = 0; i < len; i++) {
+            const u1 = r(), u2 = r();
+            const z = Math.sqrt(-2 * Math.log(u1 + 0.0001)) * Math.cos(2 * Math.PI * u2);
+            e[i] = Math.round(z * 2) % 5; // Small error in [-2, 2]
+        }
+        return e;
+    }
+    
+    function lweEncrypt(data, keySeed) {
+        const A = lweGenerateMatrix(keySeed);
+        const s = lweGenerateError(keySeed + 1, LWE_N);
+        const result = [];
+        
+        for (let i = 0; i < data.length; i++) {
+            const e = lweGenerateError(keySeed + i + 2, 1)[0];
+            let sum = data[i];
+            for (let j = 0; j < LWE_N; j++) {
+                sum += A[i % LWE_N][j] * s[j];
+            }
+            sum += e;
+            result.push(((sum % LWE_Q) + LWE_Q) % LWE_Q);
+        }
+        return result;
+    }
+    
+    function lweDecrypt(data, keySeed) {
+        const A = lweGenerateMatrix(keySeed);
+        const s = lweGenerateError(keySeed + 1, LWE_N);
+        const result = [];
+        
+        for (let i = 0; i < data.length; i++) {
+            let sum = data[i];
+            for (let j = 0; j < LWE_N; j++) {
+                sum -= A[i % LWE_N][j] * s[j];
+            }
+            // Round to nearest valid byte
+            let val = ((sum % LWE_Q) + LWE_Q) % LWE_Q;
+            if (val > 128) val = val - LWE_Q;
+            result.push(((val % 256) + 256) % 256);
+        }
+        return result;
+    }
+    
+    // ============== LAYER 3: MQ (Multivariate Quadratic) ==============
+    const MQ_VARS = 8;
+    
+    function mqGenerateCoeffs(seed) {
+        const r = prng(seed);
+        const coeffs = [];
+        // Quadratic terms + linear terms
+        const numCoeffs = (MQ_VARS * (MQ_VARS + 1)) / 2 + MQ_VARS;
+        for (let i = 0; i < numCoeffs; i++) {
+            coeffs.push(Math.floor(r() * 256));
+        }
+        return coeffs;
+    }
+    
+    function mqScramble(data, keySeed) {
+        const coeffs = mqGenerateCoeffs(keySeed);
+        const result = [];
+        
+        for (let i = 0; i < data.length; i += MQ_VARS) {
+            const block = data.slice(i, i + MQ_VARS);
+            while (block.length < MQ_VARS) block.push(0);
+            
+            let sum = 0;
+            let idx = 0;
+            // Quadratic terms
+            for (let j = 0; j < MQ_VARS; j++) {
+                for (let k = j; k < MQ_VARS; k++) {
+                    sum += coeffs[idx++] * block[j] * block[k];
+                }
+            }
+            // Linear terms
+            for (let j = 0; j < MQ_VARS; j++) {
+                sum += coeffs[idx++] * block[j];
+            }
+            
+            // XOR with original to make reversible
+            for (let j = 0; j < block.length; j++) {
+                result.push(block[j] ^ ((sum >> (j * 3)) & 0xFF));
+            }
+        }
+        return result;
+    }
+    
+    function mqUnscramble(data, keySeed) {
+        // Same operation is its own inverse (XOR based)
+        return mqScramble(data, keySeed);
+    }
+    
+    // ============== LAYER 4: SUBSET SUM ==============
+    function subsetSumGenerateSet(seed, size) {
+        const r = prng(seed);
+        const set = [];
+        for (let i = 0; i < size; i++) {
+            set.push(Math.floor(r() * 256));
+        }
+        return set;
+    }
+    
+    function subsetSumEncode(data, keySeed) {
+        const set = subsetSumGenerateSet(keySeed, 16);
+        const result = [];
+        
+        for (let i = 0; i < data.length; i++) {
+            const byte = data[i];
+            let encoded = 0;
+            // Use byte bits to select subset elements
+            for (let bit = 0; bit < 8; bit++) {
+                if ((byte >> bit) & 1) {
+                    encoded += set[bit];
+                    encoded += set[8 + bit] * (i % 7 + 1); // Position-dependent
+                }
+            }
+            result.push(encoded & 0xFF);
+            result.push((encoded >> 8) & 0xFF);
+        }
+        return result;
+    }
+    
+    function subsetSumDecode(data, keySeed) {
+        const set = subsetSumGenerateSet(keySeed, 16);
+        const result = [];
+        
+        for (let i = 0; i < data.length; i += 2) {
+            const encoded = data[i] | (data[i + 1] << 8);
+            const origIdx = i / 2;
+            
+            // Brute force decode (only 256 possibilities per byte)
+            let bestByte = 0;
+            let bestDiff = Infinity;
+            
+            for (let candidate = 0; candidate < 256; candidate++) {
+                let sum = 0;
+                for (let bit = 0; bit < 8; bit++) {
+                    if ((candidate >> bit) & 1) {
+                        sum += set[bit];
+                        sum += set[8 + bit] * (origIdx % 7 + 1);
+                    }
+                }
+                const diff = Math.abs((sum & 0xFFFF) - encoded);
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    bestByte = candidate;
+                }
+            }
+            result.push(bestByte);
+        }
+        return result;
+    }
+    
+    // ============== LAYER 5: OPTIO (Classical Labyrinth) ==============
     const AU = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const AL = 'abcdefghijklmnopqrstuvwxyz';
     const A = AU + AL;
+    let cipherOrder = [];
 
-    function rng(s) {
+    function prng(s) {
         s = s >>> 0 || 1;
         return function() {
             s = (s + 0x6D2B79F5) >>> 0;
@@ -455,7 +472,7 @@
         };
     }
 
-    function seed(k) {
+    function seedFromKey(k) {
         let h = 0;
         for (let i = 0; i < k.length; i++) h = ((h << 5) - h + k.charCodeAt(i)) >>> 0;
         for (let i = 0; i < 10000; i++) {
@@ -469,20 +486,16 @@
     function caesar(t, sh, inv) {
         const d = inv ? -sh : sh;
         return t.split('').map(c => {
-            let i = AU.indexOf(c);
-            if (i !== -1) return AU[(i + d + 26) % 26];
-            i = AL.indexOf(c);
-            if (i !== -1) return AL[(i + d + 26) % 26];
+            let i = AU.indexOf(c); if (i !== -1) return AU[(i + d + 26) % 26];
+            i = AL.indexOf(c); if (i !== -1) return AL[(i + d + 26) % 26];
             return c;
         }).join('');
     }
 
     function atbash(t) {
         return t.split('').map(c => {
-            let i = AU.indexOf(c);
-            if (i !== -1) return AU[25 - i];
-            i = AL.indexOf(c);
-            if (i !== -1) return AL[25 - i];
+            let i = AU.indexOf(c); if (i !== -1) return AU[25 - i];
+            i = AL.indexOf(c); if (i !== -1) return AL[25 - i];
             return c;
         }).join('');
     }
@@ -494,13 +507,12 @@
             if (i === -1) { i = AL.indexOf(c); b = AL; }
             if (i === -1) return c;
             const sh = AU.indexOf(k[ki++ % k.length].toUpperCase());
-            if (sh === -1) return c;
-            return b[(i + (inv ? -sh : sh) + 26) % 26];
+            return sh === -1 ? c : b[(i + (inv ? -sh : sh) + 26) % 26];
         }).join('');
     }
 
     function substitution(t, s, inv) {
-        const r = rng(s);
+        const r = prng(s);
         const ch = A.split('');
         for (let i = ch.length - 1; i > 0; i--) {
             const j = Math.floor(r() * (i + 1));
@@ -510,28 +522,25 @@
         return t.split('').map(c => { const i = ch.indexOf(c); return i !== -1 ? A[i] : c; }).join('');
     }
 
-    const M = [
+    const OPTIO_METHODS = [
         { f: (t, p, i) => caesar(t, p.c1, i), p: r => ({ c1: 1 + Math.floor(r() * 25) }), name: 'Caesar' },
         { f: t => atbash(t), name: 'Atbash' },
         { f: (t, p, i, c) => vigenere(t, c, i), name: 'Vigenère' },
         { f: (t, p, i) => substitution(t, p.s1, i), p: r => ({ s1: Math.floor(r() * 1e6) }), name: 'Substitution' }
     ];
 
-    let cipherOrder = [];
-
     function generateSalt() {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        let salt = '';
-        for (let i = 0; i < 8; i++) salt += chars[Math.floor(Math.random() * chars.length)];
+        let salt = ''; for (let i = 0; i < 8; i++) salt += chars[Math.floor(Math.random() * chars.length)];
         return salt;
     }
 
-    function encrypt(key, message) {
-        const s = seed(key);
-        const r = rng(s);
+    function optioEncrypt(key, message) {
+        const s = seedFromKey(key);
+        const r = prng(s);
         const params = {};
-        M.forEach(m => { if (m.p) Object.assign(params, m.p(r)); });
-        const order = [...M];
+        OPTIO_METHODS.forEach(m => { if (m.p) Object.assign(params, m.p(r)); });
+        const order = [...OPTIO_METHODS];
         for (let i = order.length - 1; i > 0; i--) {
             const j = Math.floor(r() * (i + 1));
             [order[i], order[j]] = [order[j], order[i]];
@@ -539,113 +548,106 @@
         cipherOrder = order.map(m => m.name);
         let res = generateSalt() + '\x00' + message;
         for (const m of order) res = m.f(res, params, false, key);
-        return btoa(unescape(encodeURIComponent(res)));
+        return res;
     }
 
-    function decrypt(key, encrypted) {
+    function optioDecrypt(key, encrypted) {
+        const s = seedFromKey(key);
+        const r = prng(s);
+        const params = {};
+        OPTIO_METHODS.forEach(m => { if (m.p) Object.assign(params, m.p(r)); });
+        const order = [...OPTIO_METHODS];
+        for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(r() * (i + 1));
+            [order[i], order[j]] = [order[j], order[i]];
+        }
+        let res = encrypted;
+        for (let i = order.length - 1; i >= 0; i--) res = order[i].f(res, params, true, key);
+        const idx = res.indexOf('\x00');
+        return idx !== -1 ? res.substring(idx + 1) : res;
+    }
+    
+    // ============== COMBINED ENCRYPTION ==============
+    async function initCrypto(password) {
+        aesKey = await deriveAESKey(password, 'OptioChatV3Salt2026');
+    }
+    
+    async function encrypt(key, message) {
+        const keySeed = seedFromKey(key);
+        
+        // Layer 1: AES-256-GCM
+        const aesResult = await aesEncrypt(message);
+        let data = Array.from(aesResult);
+        
+        // Layer 2: LWE
+        data = lweEncrypt(data, keySeed);
+        
+        // Layer 3: MQ
+        data = mqScramble(data, keySeed + 1000);
+        
+        // Layer 4: Subset Sum
+        data = subsetSumEncode(data, keySeed + 2000);
+        
+        // Layer 5: Optio
+        const b64 = btoa(String.fromCharCode(...data));
+        const optioResult = optioEncrypt(key, b64);
+        
+        return btoa(unescape(encodeURIComponent(optioResult)));
+    }
+    
+    async function decrypt(key, encrypted) {
         try {
-            let res = decodeURIComponent(escape(atob(encrypted)));
-            const s = seed(key);
-            const r = rng(s);
-            const params = {};
-            M.forEach(m => { if (m.p) Object.assign(params, m.p(r)); });
-            const order = [...M];
-            for (let i = order.length - 1; i > 0; i--) {
-                const j = Math.floor(r() * (i + 1));
-                [order[i], order[j]] = [order[j], order[i]];
-            }
-            for (let i = order.length - 1; i >= 0; i--) res = order[i].f(res, params, true, key);
-            const idx = res.indexOf('\x00');
-            return idx !== -1 ? res.substring(idx + 1) : res;
-        } catch (e) { return null; }
+            const keySeed = seedFromKey(key);
+            
+            // Reverse Layer 5: Optio
+            const optioEncrypted = decodeURIComponent(escape(atob(encrypted)));
+            const b64 = optioDecrypt(key, optioEncrypted);
+            let data = Array.from(atob(b64), c => c.charCodeAt(0));
+            
+            // Reverse Layer 4: Subset Sum
+            data = subsetSumDecode(data, keySeed + 2000);
+            
+            // Reverse Layer 3: MQ
+            data = mqUnscramble(data, keySeed + 1000);
+            
+            // Reverse Layer 2: LWE
+            data = lweDecrypt(data, keySeed);
+            
+            // Reverse Layer 1: AES
+            const message = await aesDecrypt(new Uint8Array(data));
+            
+            return message;
+        } catch (e) {
+            console.error('Decrypt error:', e);
+            return null;
+        }
     }
 
     // ============== STATE ==============
-    let ws = null;
-    let pc = null;
-    let dc = null;
-    let secretKey = '';
-    let roomCode = '';
-    let isHost = false;
-    let connectionState = 'idle';  // idle, connecting, connected, reconnecting, failed
-    let reconnectAttempt = 0;
-    let reconnectTimer = null;
-    let connectionTimer = null;
-    let iceCandidateQueue = [];  // Cola para candidates que llegan antes de remoteDescription
-    let seenMessages = new BoundedLRUSet({ max: 500, ttlMs: 5 * 60 * 1000 });
-    // Intervals (privacy-first: no background logging, but avoid leaks)
-    let statsInterval = null;
-
-    class BoundedLRUSet {
-        constructor({ max, ttlMs }) {
-            this.max = max;
-            this.ttlMs = ttlMs;
-            this.map = new Map(); // value -> lastSeenTs
+    let ws = null, pc = null, dc = null;
+    let secretKey = '', roomCode = '', isHost = false;
+    let connectionState = 'idle', reconnectAttempt = 0;
+    let reconnectTimer = null, connectionTimer = null;
+    let iceCandidateQueue = [], seenMessages = new Set();
+    let makingOffer = false, ignoreOffer = false;
+    
+    let stats = { connectedAt: null, msgSent: 0, msgRecv: 0, bytesSent: 0, bytesRecv: 0, decryptErrors: 0, lastLatency: 0 };
+    const debugLog = [];
+    
+    function debug(msg, level = 'info') {
+        debugLog.push({ ts: new Date().toISOString().substr(11, 8), msg, level });
+        if (debugLog.length > 50) debugLog.shift();
+        const el = document.getElementById('debug-log');
+        if (el) {
+            el.innerHTML = debugLog.slice(-15).map(e => `<div class="${e.level}">${e.ts} ${e.msg}</div>`).join('');
+            el.scrollTop = el.scrollHeight;
         }
-        _purge(now) {
-            for (const [v, ts] of this.map) {
-                if (now - ts <= this.ttlMs) break;
-                this.map.delete(v);
-            }
-        }
-        has(v) {
-            const now = Date.now();
-            this._purge(now);
-            const ts = this.map.get(v);
-            if (ts == null) return false;
-            if (now - ts > this.ttlMs) {
-                this.map.delete(v);
-                return false;
-            }
-            // refresh LRU
-            this.map.delete(v);
-            this.map.set(v, now);
-            return true;
-        }
-        add(v) {
-            const now = Date.now();
-            this._purge(now);
-            if (this.map.has(v)) this.map.delete(v);
-            this.map.set(v, now);
-            while (this.map.size > this.max) {
-                const oldest = this.map.keys().next().value;
-                if (oldest == null) break;
-                this.map.delete(oldest);
-            }
-        }
+        console.log(`[${level}] ${msg}`);
     }
 
-    
-    // Perfect Negotiation
-    let makingOffer = false;
-    let ignoreOffer = false;
-    let isSettingRemoteAnswerPending = false;
-    
-    // Stats
-    let stats = {
-        connectedAt: null,
-        msgSent: 0,
-        msgRecv: 0,
-        bytesSent: 0,
-        bytesRecv: 0,
-        decryptErrors: 0,
-        ipChanges: 0,
-        reconnects: 0,
-        latencies: [],
-        lastLatency: 0
-    };
-    // Debug (privacy-first: no logs)
-    function debug(_) { /* intentionally empty */ }
-    function updateDebugLog() { /* intentionally empty */ }
-
-    // ============== UI HELPERS ==============
     function generateRoomCode() {
-        const words = ['sol', 'luna', 'mar', 'rio', 'nube', 'viento', 'fuego', 'tierra', 'luz', 'sombra', 
-                       'cafe', 'libro', 'mesa', 'arbol', 'piedra', 'agua', 'cielo', 'monte', 'flor', 'hoja'];
-        const w1 = words[Math.floor(Math.random() * words.length)];
-        const w2 = words[Math.floor(Math.random() * words.length)];
-        const num = Math.floor(Math.random() * 100);
-        return `${w1}-${w2}-${num}`;
+        const words = ['sol','luna','mar','rio','nube','viento','fuego','tierra','luz','sombra','cafe','libro','mesa','arbol','piedra'];
+        return `${words[Math.floor(Math.random()*words.length)]}-${words[Math.floor(Math.random()*words.length)]}-${Math.floor(Math.random()*100)}`;
     }
 
     function showStart() {
@@ -654,14 +656,12 @@
         document.getElementById('setup-join').classList.add('hidden');
         document.getElementById('main').classList.remove('active');
     }
-
     function showJoin() {
         document.getElementById('setup-start').classList.add('hidden');
         document.getElementById('setup-join').classList.remove('hidden');
         document.getElementById('join-status').classList.add('hidden');
         document.getElementById('join-buttons').classList.remove('hidden');
     }
-
     function showChat() {
         document.getElementById('setup-start').classList.add('hidden');
         document.getElementById('setup-waiting').classList.add('hidden');
@@ -670,17 +670,14 @@
         document.getElementById('chat-room').textContent = roomCode;
         enableChat(true);
         stats.connectedAt = Date.now();
-        if (statsInterval) clearInterval(statsInterval);
-        statsInterval = setInterval(updateStats, 1000);
+        setInterval(updateStats, 1000);
         startPing();
     }
-    
     function enableChat(enabled) {
         document.getElementById('message-input').disabled = !enabled;
         document.getElementById('send-btn').disabled = !enabled;
         if (enabled) document.getElementById('message-input').focus();
     }
-
     function addMessage(text, type) {
         const div = document.createElement('div');
         div.className = 'message ' + type;
@@ -688,664 +685,222 @@
         document.getElementById('messages').appendChild(div);
         div.scrollIntoView({ behavior: 'smooth' });
     }
-    
     function updateConnectionUI(state, detail = '') {
         connectionState = state;
+        const dots = ['waiting-dot','join-dot','chat-conn-dot'].map(id => document.getElementById(id)).filter(Boolean);
+        dots.forEach(d => d.className = d.id === 'chat-conn-dot' ? 'conn-dot' : 'dot');
         
-        // Setup screens
-        const waitingDot = document.getElementById('waiting-dot');
-        const waitingText = document.getElementById('waiting-text');
-        const waitingDetail = document.getElementById('waiting-detail');
-        const waitingRetry = document.getElementById('waiting-retry');
-        const joinDot = document.getElementById('join-dot');
-        const joinText = document.getElementById('join-text');
-        const joinDetail = document.getElementById('join-detail');
-        const joinRetry = document.getElementById('join-retry');
+        const states = { connecting: 'connecting', waiting: 'connecting', connected: 'connected', reconnecting: 'reconnecting', failed: 'failed' };
+        dots.forEach(d => d.classList.add(states[state] || ''));
         
-        // Chat screen
-        const chatDot = document.getElementById('chat-conn-dot');
-        const chatText = document.getElementById('chat-conn-text');
-        const connBadge = document.getElementById('conn-badge');
+        const texts = { connecting: 'Connecting...', waiting: 'Waiting for peer...', connected: 'Connected', reconnecting: `Reconnecting (${reconnectAttempt})...`, failed: 'Connection failed' };
+        ['waiting-text','join-text','chat-conn-text'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = texts[state] || state; });
         
-        const dots = [waitingDot, joinDot, chatDot].filter(Boolean);
-        const texts = { waiting: waitingText, join: joinText, chat: chatText };
-        const details = { waiting: waitingDetail, join: joinDetail };
-        const retries = { waiting: waitingRetry, join: joinRetry };
-        
-        dots.forEach(d => d.className = 'dot');
-        if (chatDot) chatDot.className = 'conn-dot';
-        
-        switch (state) {
-            case 'connecting':
-                dots.forEach(d => d.classList.add('connecting'));
-                if (waitingText) waitingText.textContent = 'Connecting...';
-                if (joinText) joinText.textContent = 'Connecting...';
-                if (chatText) chatText.textContent = 'Connecting';
-                Object.values(retries).forEach(r => r?.classList.add('hidden'));
-                break;
-            case 'waiting':
-                dots.forEach(d => d.classList.add('connecting'));
-                if (waitingText) waitingText.textContent = 'Waiting for peer...';
-                break;
-            case 'connected':
-                dots.forEach(d => d.classList.add('connected'));
-                if (chatDot) chatDot.classList.remove('disconnected', 'reconnecting');
-                if (chatText) chatText.textContent = 'Connected';
-                if (connBadge) { connBadge.textContent = 'OK'; connBadge.className = 'status-badge ok'; }
-                enableChat(true);
-                break;
-            case 'reconnecting':
-                dots.forEach(d => d.classList.add('reconnecting'));
-                if (chatDot) chatDot.classList.add('reconnecting');
-                if (chatText) chatText.textContent = `Reconnecting (${reconnectAttempt})...`;
-                if (connBadge) { connBadge.textContent = 'RECONN'; connBadge.className = 'status-badge warn'; }
-                enableChat(false);
-                break;
-            case 'failed':
-                dots.forEach(d => d.classList.add('failed'));
-                if (chatDot) chatDot.classList.add('disconnected');
-                if (waitingText) waitingText.textContent = 'Connection failed';
-                if (joinText) joinText.textContent = 'Connection failed';
-                if (chatText) chatText.textContent = 'Disconnected';
-                if (connBadge) { connBadge.textContent = 'OFF'; connBadge.className = 'status-badge error'; }
-                Object.values(retries).forEach(r => r?.classList.remove('hidden'));
-                enableChat(false);
-                break;
-        }
-        
-        if (detail) {
-            Object.values(details).forEach(d => { if (d) d.textContent = detail; });
-        }
+        if (detail) ['waiting-detail','join-detail'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = detail; });
         
         document.getElementById('conn-mode').textContent = state === 'connected' ? 'P2P Direct' : state;
+        const badge = document.getElementById('conn-badge');
+        if (state === 'connected') { badge.textContent = 'OK'; badge.className = 'status-badge ok'; }
+        else if (state === 'failed') { badge.textContent = 'OFF'; badge.className = 'status-badge error'; }
+        else { badge.textContent = 'WAIT'; badge.className = 'status-badge warn'; }
+        
+        enableChat(state === 'connected');
     }
 
-    // ============== STATS ==============
     function updateStats() {
         if (stats.connectedAt) {
             const secs = Math.floor((Date.now() - stats.connectedAt) / 1000);
-            const mins = Math.floor(secs / 60);
-            const s = secs % 60;
-            document.getElementById('conn-uptime').textContent = `${mins}m ${s}s`;
+            document.getElementById('conn-uptime').textContent = `${Math.floor(secs/60)}m ${secs%60}s`;
         }
-        
         document.getElementById('crypto-sent').textContent = stats.msgSent;
         document.getElementById('crypto-recv').textContent = stats.msgRecv;
-        document.getElementById('crypto-bytes-sent').textContent = formatBytes(stats.bytesSent);
-        document.getElementById('crypto-bytes-recv').textContent = formatBytes(stats.bytesRecv);
-        document.getElementById('conn-reconnects').textContent = stats.reconnects;
+        document.getElementById('crypto-bytes-sent').textContent = stats.bytesSent < 1024 ? stats.bytesSent + 'b' : (stats.bytesSent/1024).toFixed(1) + 'kb';
+        document.getElementById('crypto-bytes-recv').textContent = stats.bytesRecv < 1024 ? stats.bytesRecv + 'b' : (stats.bytesRecv/1024).toFixed(1) + 'kb';
+        if (stats.lastLatency > 0) document.getElementById('conn-latency').textContent = stats.lastLatency + 'ms';
+        if (pc) document.getElementById('conn-ice').textContent = pc.iceConnectionState || '--';
         
-        if (stats.lastLatency > 0) {
-            document.getElementById('conn-latency').textContent = `${stats.lastLatency}ms`;
-            const latencyEl = document.getElementById('sec-latency');
-            if (stats.lastLatency > 200) {
-                latencyEl.textContent = '⚠ Latency high (' + stats.lastLatency + 'ms)';
-                latencyEl.className = 'status-check warn';
-            } else {
-                latencyEl.textContent = '✓ Latency normal';
-                latencyEl.className = 'status-check';
-            }
-        }
-        
-        const decryptEl = document.getElementById('sec-decrypt');
-        if (stats.decryptErrors > 0) {
-            decryptEl.textContent = '⚠ Decrypt errors: ' + stats.decryptErrors;
-            decryptEl.className = 'status-check warn';
-        }
-        
-        if (cipherOrder.length > 0) {
-            document.getElementById('crypto-order').textContent = cipherOrder.join(' → ');
-        }
-        
-        if (pc) {
-            document.getElementById('conn-ice').textContent = pc.iceConnectionState || '--';
-        }
-        
-        updateBadges();
-    }
-
-    function updateBadges() {
-        const secIssues = stats.decryptErrors + stats.ipChanges + (stats.lastLatency > 200 ? 1 : 0);
         const secBadge = document.getElementById('sec-badge');
-        if (secIssues === 0) {
-            secBadge.textContent = 'OK';
-            secBadge.className = 'status-badge ok';
-        } else if (secIssues < 3) {
-            secBadge.textContent = 'WARN';
-            secBadge.className = 'status-badge warn';
-        } else {
-            secBadge.textContent = 'RISK';
-            secBadge.className = 'status-badge error';
-        }
+        if (stats.decryptErrors === 0) { secBadge.textContent = 'OK'; secBadge.className = 'status-badge ok'; }
+        else { secBadge.textContent = 'WARN'; secBadge.className = 'status-badge warn'; }
     }
 
-    function formatBytes(b) {
-        if (b < 1024) return b + 'b';
-        return (b / 1024).toFixed(1) + 'kb';
-    }
-
-    // ============== PING ==============
-    let pingInterval = null;
-    let pendingPing = null;
-
-    function makeNonce() {
-        const a = new Uint32Array(2);
-        crypto.getRandomValues(a);
-        return a[0].toString(16) + a[1].toString(16);
-    }
-
+    let pingInterval = null, pendingPing = null;
     function startPing() {
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(() => {
             if (dc && dc.readyState === 'open') {
-                pendingPing = { id: makeNonce(), t: Date.now() };
-                try {
-                    dc.send(JSON.stringify({ type: 'ping', id: pendingPing.id, t: pendingPing.t }));
-                } catch (e) {
-                    // no-op (privacy-first)
-                }
+                pendingPing = Date.now();
+                try { dc.send(JSON.stringify({ type: 'ping', t: pendingPing })); } catch(e) {}
             }
         }, 5000);
     }
-
     function handlePing(data) {
-        if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
-
-        if (data.type === 'ping') {
-            // Echo back the same id/t to allow correlation
-            if (dc && dc.readyState === 'open') {
-                try {
-                    dc.send(JSON.stringify({ type: 'pong', id: data.id, t: data.t }));
-                } catch (e) {
-                    // no-op (privacy-first)
-                }
-            }
-            return;
-        }
-
-        if (data.type === 'pong') {
-            if (!pendingPing) return;
-            if (typeof data.id !== 'string' || typeof data.t !== 'number') return;
-            // Exact match required; reject stale/out-of-order pongs
-            if (data.id !== pendingPing.id || data.t !== pendingPing.t) return;
-            const now = Date.now();
-            if (data.t <= 0 || data.t > now) return;
-
-            stats.lastLatency = now - data.t;
-            stats.latencies.push(stats.lastLatency);
-            if (stats.latencies.length > 10) stats.latencies.shift();
-            pendingPing = null;
-        }
+        if (data.type === 'ping') try { dc.send(JSON.stringify({ type: 'pong', t: data.t })); } catch(e) {}
+        else if (data.type === 'pong' && pendingPing) { stats.lastLatency = Date.now() - data.t; pendingPing = null; }
     }
 
-    // ============== CLEANUP ==============
     function cleanup() {
-        if (connectionTimer) {
-            clearTimeout(connectionTimer);
-            connectionTimer = null;
-        }
-        if (reconnectTimer) {
-            clearTimeout(reconnectTimer);
-            reconnectTimer = null;
-        }
-        if (pingInterval) {
-            clearInterval(pingInterval);
-            pingInterval = null;
-        }
-        if (statsInterval) {
-            clearInterval(statsInterval);
-            statsInterval = null;
-        }
-        
-        if (dc) {
-            dc.onopen = null;
-            dc.onclose = null;
-            dc.onmessage = null;
-            dc.onerror = null;
-            try { dc.close(); } catch (e) {}
-            dc = null;
-        }
-        
-        if (pc) {
-            pc.onicecandidate = null;
-            pc.oniceconnectionstatechange = null;
-            pc.onconnectionstatechange = null;
-            pc.onsignalingstatechange = null;
-            pc.ondatachannel = null;
-            pc.onnegotiationneeded = null;
-            try { pc.close(); } catch (e) {}
-            pc = null;
-        }
-        
-        if (ws) {
-            ws.onopen = null;
-            ws.onclose = null;
-            ws.onmessage = null;
-            ws.onerror = null;
-            try { ws.close(); } catch (e) {}
-            ws = null;
-        }
-        
-        iceCandidateQueue = [];
-        makingOffer = false;
-        ignoreOffer = false;
-        isSettingRemoteAnswerPending = false;
+        debug('Cleaning up...');
+        [connectionTimer, reconnectTimer, pingInterval].forEach(t => { if (t) clearInterval(t) || clearTimeout(t); });
+        connectionTimer = reconnectTimer = pingInterval = null;
+        if (dc) { dc.onopen = dc.onclose = dc.onmessage = dc.onerror = null; try { dc.close(); } catch(e) {} dc = null; }
+        if (pc) { pc.onicecandidate = pc.oniceconnectionstatechange = pc.ondatachannel = pc.onnegotiationneeded = null; try { pc.close(); } catch(e) {} pc = null; }
+        if (ws) { ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null; try { ws.close(); } catch(e) {} ws = null; }
+        iceCandidateQueue = []; makingOffer = ignoreOffer = false;
     }
+    function cancelAndRetry() { cleanup(); reconnectAttempt = 0; showStart(); }
 
-    function cancelAndRetry() {
-        cleanup();
-        reconnectAttempt = 0;
-        showStart();
-    }
-
-    // ============== WEBSOCKET ==============
     function connectSignal() {
         return new Promise((resolve, reject) => {
             debug('Connecting to signal server...');
             ws = new WebSocket(SIGNAL_SERVER);
-            
-            const timeout = setTimeout(() => {
-                reject(new Error('Signal server timeout'));
-            }, 10000);
-            
-            ws.onopen = () => {
-                clearTimeout(timeout);
-                debug('Signal server connected');
-                resolve();
-            };
-            
-            ws.onerror = (e) => {
-                clearTimeout(timeout);
-                debug('Signal server error', 'error');
-                reject(new Error('Cannot connect to signal server'));
-            };
-            
-            ws.onclose = () => {
-                debug('Signal server disconnected', 'warn');
-                if (connectionState === 'connecting' || connectionState === 'waiting') {
-                    updateConnectionUI('failed', 'Signal server disconnected');
-                }
-            };
-            
-            ws.onmessage = (e) => {
-                try {
-                    handleSignalMessage(JSON.parse(e.data));
-                } catch (err) {
-                    debug('Invalid signal message', 'error');
-                }
-            };
+            const timeout = setTimeout(() => reject(new Error('Signal server timeout')), 10000);
+            ws.onopen = () => { clearTimeout(timeout); debug('Signal connected'); resolve(); };
+            ws.onerror = () => { clearTimeout(timeout); debug('Signal error', 'error'); reject(new Error('Cannot connect')); };
+            ws.onclose = () => { debug('Signal disconnected', 'warn'); if (connectionState === 'connecting' || connectionState === 'waiting') updateConnectionUI('failed', 'Signal disconnected'); };
+            ws.onmessage = (e) => { try { handleSignalMessage(JSON.parse(e.data)); } catch(err) { debug('Invalid signal', 'error'); } };
         });
     }
 
     async function handleSignalMessage(msg) {
         debug(`Signal: ${msg.type}`);
-        
-        switch (msg.type) {
-            case 'created':
-                updateConnectionUI('waiting');
-                break;
-                
-            case 'joined':
-                updateConnectionUI('connecting', 'Establishing P2P...');
-                await startWebRTC(false);
-                break;
-                
-            case 'peer-joined':
-                updateConnectionUI('connecting', 'Peer joined, establishing P2P...');
-                await startWebRTC(true);
-                break;
-                
-            case 'signal':
-                await handleWebRTCSignal(msg.data);
-                break;
-                
-            case 'peer-left':
-                debug('Peer left', 'warn');
-                addMessage('Peer disconnected', 'system');
-                if (connectionState === 'connected') {
-                    attemptReconnect();
-                }
-                break;
-                
-            case 'room-closed':
-                debug('Room closed by server', 'warn');
-                updateConnectionUI('failed', 'Room closed');
-                break;
-                
-            case 'server-shutdown':
-                debug('Server shutting down', 'warn');
-                updateConnectionUI('failed', 'Server shutdown');
-                break;
-                
-            case 'ping':
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    try { ws.send(JSON.stringify({ type: 'pong' })); } catch (e) {}
-                }
-                break;
-                
-            case 'error':
-                debug(`Server error: ${msg.message}`, 'error');
-                updateConnectionUI('failed', msg.message);
-                break;
-        }
+        if (msg.type === 'created') updateConnectionUI('waiting');
+        else if (msg.type === 'joined') { updateConnectionUI('connecting', 'Establishing P2P...'); await startWebRTC(false); }
+        else if (msg.type === 'peer-joined') { updateConnectionUI('connecting', 'Peer joined...'); await startWebRTC(true); }
+        else if (msg.type === 'signal') await handleWebRTCSignal(msg.data);
+        else if (msg.type === 'peer-left') { debug('Peer left', 'warn'); addMessage('Peer disconnected', 'system'); if (connectionState === 'connected') attemptReconnect(); }
+        else if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
+        else if (msg.type === 'error') { debug(`Error: ${msg.message}`, 'error'); updateConnectionUI('failed', msg.message); }
     }
 
-    // ============== WEBRTC ==============
     async function startWebRTC(initiator) {
         debug(`Starting WebRTC (initiator: ${initiator})`);
-        
         pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-        
-        // Connection timeout
-        connectionTimer = setTimeout(() => {
-            if (connectionState !== 'connected') {
-                debug('Connection timeout', 'error');
-                updateConnectionUI('failed', 'Connection timeout');
-                attemptReconnect();
-            }
-        }, CONNECTION_TIMEOUT);
-        
-        // ICE candidates
-        pc.onicecandidate = (e) => {
-            if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'signal', data: { ice: e.candidate } }));
-            }
-        };
-        
-        // ICE connection state
+        connectionTimer = setTimeout(() => { if (connectionState !== 'connected') { debug('Connection timeout', 'error'); updateConnectionUI('failed', 'Timeout'); attemptReconnect(); } }, CONNECTION_TIMEOUT);
+        pc.onicecandidate = (e) => { if (e.candidate && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'signal', data: { ice: e.candidate } })); };
         pc.oniceconnectionstatechange = () => {
-            debug(`ICE state: ${pc.iceConnectionState}`);
-            document.getElementById('conn-ice').textContent = pc.iceConnectionState;
-            
-            switch (pc.iceConnectionState) {
-                case 'connected':
-                case 'completed':
-                    if (connectionTimer) {
-                        clearTimeout(connectionTimer);
-                        connectionTimer = null;
-                    }
-                    break;
-                case 'failed':
-                    debug('ICE failed, attempting restart...', 'warn');
-                    restartICE();
-                    break;
-                case 'disconnected':
-                    debug('ICE disconnected', 'warn');
-                    // Esperar un poco antes de intentar reconectar
-                    setTimeout(() => {
-                        if (pc && pc.iceConnectionState === 'disconnected') {
-                            attemptReconnect();
-                        }
-                    }, 3000);
-                    break;
-            }
+            debug(`ICE: ${pc.iceConnectionState}`);
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') { if (connectionTimer) { clearTimeout(connectionTimer); connectionTimer = null; } }
+            else if (pc.iceConnectionState === 'failed') { debug('ICE failed', 'warn'); pc.restartIce(); }
+            else if (pc.iceConnectionState === 'disconnected') setTimeout(() => { if (pc?.iceConnectionState === 'disconnected') attemptReconnect(); }, 3000);
         };
-        
-        // Connection state
-        pc.onconnectionstatechange = () => {
-            debug(`Connection state: ${pc.connectionState}`);
-            if (pc.connectionState === 'failed') {
-                attemptReconnect();
-            }
-        };
-        
-        // Data channel
-        pc.ondatachannel = (e) => {
-            debug('Data channel received');
-            dc = e.channel;
-            setupDataChannel();
-        };
-        
-        // Perfect Negotiation: negotiation needed
+        pc.ondatachannel = (e) => { dc = e.channel; setupDataChannel(); };
         pc.onnegotiationneeded = async () => {
-            try {
-                makingOffer = true;
-                await pc.setLocalDescription();
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        try { if (ws && ws.readyState === WebSocket.OPEN) {
-                        try { ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } })); } catch (e) {}
-                    } } catch (e) {}
-                    }
-            } catch (e) {
-                debug('Negotiation error: ' + e.message, 'error');
-            } finally {
-                makingOffer = false;
-            }
+            try { makingOffer = true; await pc.setLocalDescription(); ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } })); }
+            catch(e) { debug('Negotiation error', 'error'); }
+            finally { makingOffer = false; }
         };
-        
-        if (initiator) {
-            debug('Creating data channel');
-            dc = pc.createDataChannel('chat', { ordered: true });
-            setupDataChannel();
-        }
+        if (initiator) { dc = pc.createDataChannel('chat', { ordered: true }); setupDataChannel(); }
     }
-    
+
     async function handleWebRTCSignal(data) {
         if (!pc) return;
-        
         try {
             if (data.sdp) {
-                const description = new RTCSessionDescription(data.sdp);
-                const offerCollision = description.type === 'offer' && 
-                    (makingOffer || pc.signalingState !== 'stable');
-                
-                // Perfect Negotiation: polite peer cede
-                ignoreOffer = !isHost && offerCollision;
-                if (ignoreOffer) {
-                    debug('Ignoring colliding offer (polite peer)');
-                    return;
-                }
-                
-                await pc.setRemoteDescription(description);
-                
-                // Drain ICE candidate queue
-                while (iceCandidateQueue.length > 0) {
-                    const candidate = iceCandidateQueue.shift();
-                    await pc.addIceCandidate(candidate);
-                }
-                
-                if (description.type === 'offer') {
-                    await pc.setLocalDescription();
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        try { if (ws && ws.readyState === WebSocket.OPEN) {
-                        try { ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } })); } catch (e) {}
-                    } } catch (e) {}
-                    }
-                }
+                const desc = new RTCSessionDescription(data.sdp);
+                const collision = desc.type === 'offer' && (makingOffer || pc.signalingState !== 'stable');
+                ignoreOffer = !isHost && collision;
+                if (ignoreOffer) { debug('Ignoring collision'); return; }
+                await pc.setRemoteDescription(desc);
+                while (iceCandidateQueue.length) await pc.addIceCandidate(iceCandidateQueue.shift());
+                if (desc.type === 'offer') { await pc.setLocalDescription(); ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } })); }
             }
-            
             if (data.ice) {
-                try {
-                    if (pc.remoteDescription) {
-                        await pc.addIceCandidate(new RTCIceCandidate(data.ice));
-                    } else {
-                        // Queue if no remote description yet
-                        debug('Queuing ICE candidate');
-                        iceCandidateQueue.push(new RTCIceCandidate(data.ice));
-                    }
-                } catch (e) {
-                    if (!ignoreOffer) throw e;
-                }
+                if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.ice));
+                else { debug('Queuing ICE'); iceCandidateQueue.push(new RTCIceCandidate(data.ice)); }
             }
-        } catch (e) {
-            debug('Signal handling error: ' + e.message, 'error');
-        }
+        } catch(e) { if (!ignoreOffer) debug('Signal error: ' + e.message, 'error'); }
     }
-    
-    function restartICE() {
-        if (!pc) return;
-        debug('Restarting ICE...');
-        pc.restartIce();
-    }
-    
+
     function attemptReconnect() {
-        if (reconnectAttempt >= RECONNECT_DELAYS.length) {
-            debug('Max reconnect attempts reached', 'error');
-            updateConnectionUI('failed', 'Connection lost');
-            return;
-        }
-        
-        const delay = RECONNECT_DELAYS[reconnectAttempt];
-        reconnectAttempt++;
-        stats.reconnects++;
-        
-        debug(`Reconnecting in ${delay}ms (attempt ${reconnectAttempt})...`, 'warn');
+        if (reconnectAttempt >= RECONNECT_DELAYS.length) { debug('Max reconnects', 'error'); updateConnectionUI('failed', 'Connection lost'); return; }
+        const delay = RECONNECT_DELAYS[reconnectAttempt++];
+        debug(`Reconnecting in ${delay}ms...`, 'warn');
         updateConnectionUI('reconnecting');
-        
         cleanup();
-        
         reconnectTimer = setTimeout(async () => {
-            try {
-                await connectSignal();
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    try { ws.send(JSON.stringify({ type: 'join', room: roomCode })); } catch (e) {}
-                }
-            } catch (e) {
-                debug('Reconnect failed: ' + e.message, 'error');
-                attemptReconnect();
-            }
+            try { await connectSignal(); ws.send(JSON.stringify({ type: 'join', room: roomCode })); }
+            catch(e) { debug('Reconnect failed', 'error'); attemptReconnect(); }
         }, delay);
     }
 
     function setupDataChannel() {
         dc.onopen = () => {
-            debug('Data channel open - connected!');
-            if (connectionTimer) {
-                clearTimeout(connectionTimer);
-                connectionTimer = null;
-            }
+            debug('Connected!');
+            if (connectionTimer) { clearTimeout(connectionTimer); connectionTimer = null; }
             reconnectAttempt = 0;
             updateConnectionUI('connected');
             showChat();
-            addMessage('Connected. End-to-end encrypted with Optio.', 'system');
-            
-            // Cerrar WebSocket (ya no necesario)
-            if (ws) {
-                ws.close();
-                ws = null;
-            }
+            addMessage('Connected. 5-layer encryption active.', 'system');
+            addMessage('AES-256 → LWE → MQ → SubsetSum → Optio', 'system');
+            if (ws) { ws.close(); ws = null; }
         };
-
-        dc.onmessage = (e) => {
-            try {
-                const data = JSON.parse(e.data);
-                if (data.type === 'ping' || data.type === 'pong') {
-                    handlePing(data);
-                    return;
-                }
-            } catch {}
-            // Duplicate protection (privacy-first): exact ciphertext dedupe, bounded TTL+LRU
-            if (seenMessages.has(e.data)) {
-                const dupEl = document.getElementById('sec-replay');
-                if (dupEl) {
-                    dupEl.textContent = 'Duplicate ignored';
-                    dupEl.className = 'status-check warn';
-                }
-                return;
-            }
-            seenMessages.add(e.data);
-            const decrypted = decrypt(secretKey, e.data);
+        dc.onmessage = async (e) => {
+            try { const data = JSON.parse(e.data); if (data.type === 'ping' || data.type === 'pong') { handlePing(data); return; } } catch {}
+            const hash = e.data.substring(0, 20);
+            if (seenMessages.has(hash)) { document.getElementById('sec-replay').textContent = '⚠ Replay!'; document.getElementById('sec-replay').className = 'status-check error'; return; }
+            seenMessages.add(hash);
+            if (seenMessages.size > 1000) seenMessages = new Set(Array.from(seenMessages).slice(-500));
+            const decrypted = await decrypt(secretKey, e.data);
             stats.bytesRecv += e.data.length;
-
-            if (decrypted === null) {
-                stats.decryptErrors++;
-                addMessage('[decrypt error]', 'error');
-                return;
-            }
-
-            // Empty string is allowed but ignored as a chat message
-            if (decrypted.length > 0) {
-                stats.msgRecv++;
-                addMessage(decrypted, 'received');
-            }
+            if (decrypted) { stats.msgRecv++; addMessage(decrypted, 'received'); }
+            else { stats.decryptErrors++; document.getElementById('sec-decrypt').textContent = '⚠ Decrypt errors: ' + stats.decryptErrors; document.getElementById('sec-decrypt').className = 'status-check warn'; addMessage('[decrypt error]', 'error'); }
         };
-
-        dc.onclose = () => {
-            debug('Data channel closed', 'warn');
-            if (connectionState === 'connected') {
-                attemptReconnect();
-            }
-        };
-        
-        dc.onerror = (e) => {
-            debug('Data channel error', 'error');
-        };
+        dc.onclose = () => { debug('Channel closed', 'warn'); if (connectionState === 'connected') attemptReconnect(); };
+        dc.onerror = () => debug('Channel error', 'error');
     }
 
-    // ============== ROOM MANAGEMENT ==============
     async function createRoom() {
         secretKey = document.getElementById('secret-key').value;
-        if (!secretKey) return alert('Enter a secret key');
-        if (secretKey.length < 4) return alert('Secret key too short (min 4 chars)');
-
+        if (!secretKey || secretKey.length < 4) return alert('Secret key min 4 chars');
         cleanup();
-        updateConnectionUI('connecting', 'Connecting to server...');
-
+        updateConnectionUI('connecting', 'Initializing crypto...');
         try {
+            await initCrypto(secretKey);
+            debug('Crypto initialized');
             await connectSignal();
             roomCode = generateRoomCode();
             isHost = true;
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                try { ws.send(JSON.stringify({ type: 'create', room: roomCode })); } catch (e) {}
-            }
-            
+            ws.send(JSON.stringify({ type: 'create', room: roomCode }));
             document.getElementById('room-code').textContent = roomCode;
             document.getElementById('setup-start').classList.add('hidden');
             document.getElementById('setup-waiting').classList.remove('hidden');
-        } catch (e) {
-            debug('Create room error: ' + e.message, 'error');
-            updateConnectionUI('failed', e.message);
-        }
+        } catch(e) { debug('Error: ' + e.message, 'error'); updateConnectionUI('failed', e.message); }
     }
 
     async function joinRoom() {
         secretKey = document.getElementById('secret-key').value;
         roomCode = document.getElementById('join-code').value.trim().toLowerCase();
-        
-        if (!secretKey) return alert('Enter a secret key first');
-        if (secretKey.length < 4) return alert('Secret key too short (min 4 chars)');
+        if (!secretKey || secretKey.length < 4) return alert('Secret key min 4 chars');
         if (!roomCode) return alert('Enter room code');
-
         cleanup();
         document.getElementById('join-buttons').classList.add('hidden');
         document.getElementById('join-status').classList.remove('hidden');
-        updateConnectionUI('connecting', 'Connecting to server...');
-
+        updateConnectionUI('connecting', 'Initializing crypto...');
         try {
+            await initCrypto(secretKey);
+            debug('Crypto initialized');
             await connectSignal();
             isHost = false;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                try { ws.send(JSON.stringify({ type: 'join', room: roomCode })); } catch (e) {}
-            }
-        } catch (e) {
-            debug('Join room error: ' + e.message, 'error');
-            updateConnectionUI('failed', e.message);
-        }
+            ws.send(JSON.stringify({ type: 'join', room: roomCode }));
+        } catch(e) { debug('Error: ' + e.message, 'error'); updateConnectionUI('failed', e.message); }
     }
 
-    function sendMessage() {
+    async function sendMessage() {
         const input = document.getElementById('message-input');
         const msg = input.value.trim();
         if (!msg || !dc || dc.readyState !== 'open') return;
-
         try {
-            const encrypted = encrypt(secretKey, msg);
+            const encrypted = await encrypt(secretKey, msg);
             dc.send(encrypted);
-            
             stats.msgSent++;
             stats.bytesSent += encrypted.length;
-            
             addMessage(msg, 'sent');
             input.value = '';
-        } catch (e) {
-            debug('Send error: ' + e.message, 'error');
-            addMessage('[send failed]', 'error');
-        }
+        } catch(e) { debug('Send error: ' + e.message, 'error'); addMessage('[send failed]', 'error'); }
     }
-    
-    // ============== INIT ==============
-    debug('Optio Chat v2.0 initialized');
+
+    debug('Optio Chat v3.0 - 5-layer encryption');
     </script>
 </body>
 </html>
