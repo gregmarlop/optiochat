@@ -14,6 +14,7 @@
  */
 
 const http = require('http');
+const crypto = require('crypto');
 const WebSocket = require('ws');
 
 // ============== CONFIG ==============
@@ -45,15 +46,16 @@ function generateId() {
     return Math.random().toString(36).substring(2, 10);
 }
 
+/**
+ * Hash signal data using SHA-256 for collision resistance
+ * Returns a 22-character base64url hash suitable for deduplication
+ */
 function hashSignal(data) {
     const str = JSON.stringify(data);
-    let h = 0;
-    for (let i = 0; i < str.length; i++) {
-        h = ((h << 5) - h + str.charCodeAt(i)) >>> 0;
-    }
-    h = (h ^ (h >>> 16)) >>> 0;
-    h = ((h << 7) ^ h) >>> 0;
-    return h.toString(36);
+    return crypto.createHash('sha256')
+        .update(str)
+        .digest('base64url')
+        .slice(0, 22);
 }
 
 function validateMessage(data) {

@@ -542,6 +542,16 @@
         return btoa(unescape(encodeURIComponent(res)));
     }
 
+    /**
+     * Decrypt an encrypted message using the Optio cipher system.
+     * 
+     * @param {string} key - The secret key used for decryption
+     * @param {string} encrypted - The base64-encoded encrypted message
+     * @returns {string|null} The decrypted message, or:
+     *   - null: Decryption failed (wrong key, corrupted data, or invalid format)
+     *   - "": Valid empty message (empty string is a valid decrypted result)
+     *   - string: The decrypted message content
+     */
     function decrypt(key, encrypted) {
         try {
             let res = decodeURIComponent(escape(atob(encrypted)));
@@ -807,26 +817,46 @@
     // ============== PING ==============
     let pendingPing = null;
 
-    // Hash function for message deduplication
-    function hashMessage(msg) {
+    /**
+     * Simple hash for synchronous replay detection in message handler.
+     * NOTE: This is NOT cryptographically secure - it's only for basic
+     * deduplication. For security-critical use cases, use SHA-256 via
+     * SubtleCrypto (async).
+     */
+    function hashMessageSync(msg) {
         let h = 0;
         for (let i = 0; i < msg.length; i++) {
             h = ((h << 5) - h + msg.charCodeAt(i)) >>> 0;
         }
-        // Additional mixing to reduce collisions
         h = (h ^ (h >>> 16)) >>> 0;
         h = ((h << 7) ^ h) >>> 0;
         return h.toString(36);
+    }
+    
+    /**
+     * Cryptographically secure hash using SHA-256 (async).
+     * Use this for security-critical deduplication when possible.
+     */
+    async function hashMessageSecure(msg) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(msg);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = new Uint8Array(hashBuffer);
+        const base64 = btoa(String.fromCharCode(...hashArray));
+        return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').slice(0, 22);
     }
 
     function startPing() {
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(() => {
             if (dc && dc.readyState === 'open') {
-                pendingPing = Date.now();
+                // Store ping timestamp for correlation
+                pendingPing = { t: Date.now() };
                 try {
-                    dc.send(JSON.stringify({ type: 'ping', t: pendingPing }));
-                } catch (e) {}
+                    dc.send(JSON.stringify({ type: 'ping', t: pendingPing.t }));
+                } catch (e) {
+                    debug('Failed to send ping: ' + e.message, 'warn');
+                }
             }
         }, 5000);
     }
@@ -839,15 +869,16 @@
                 debug('Failed to send pong: ' + e.message, 'warn');
             }
         } else if (data.type === 'pong' && pendingPing) {
-            // Validate timestamp to prevent NaN latencies
-            if (typeof data.t === 'number' && data.t > 0 && data.t < Date.now()) {
+            // Correlate pong with pending ping to prevent out-of-order issues
+            if (typeof data.t === 'number' && data.t === pendingPing.t) {
                 stats.lastLatency = Date.now() - data.t;
                 stats.latencies.push(stats.lastLatency);
                 if (stats.latencies.length > 10) stats.latencies.shift();
+                pendingPing = null;
             } else {
-                debug('Invalid pong timestamp', 'warn');
+                debug('Pong timestamp mismatch or invalid', 'warn');
+                pendingPing = null;
             }
-            pendingPing = null;
         }
     }
 
@@ -1210,8 +1241,9 @@
                 }
             } catch {}
             
-            // Replay detection with proper hash
-            const msgHash = hashMessage(e.data);
+            // Replay detection (using sync hash for performance in message handler)
+            // NOTE: For higher security, consider using hashMessageSecure() in async context
+            const msgHash = hashMessageSync(e.data);
             if (seenMessages.has(msgHash)) {
                 const replayEl = document.getElementById('sec-replay');
                 replayEl.textContent = '⚠ Replay detected!';
