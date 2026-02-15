@@ -818,24 +818,8 @@
     let pendingPing = null;
 
     /**
-     * Simple hash for synchronous replay detection in message handler.
-     * NOTE: This is NOT cryptographically secure - it's only for basic
-     * deduplication. For security-critical use cases, use SHA-256 via
-     * SubtleCrypto (async).
-     */
-    function hashMessageSync(msg) {
-        let h = 0;
-        for (let i = 0; i < msg.length; i++) {
-            h = ((h << 5) - h + msg.charCodeAt(i)) >>> 0;
-        }
-        h = (h ^ (h >>> 16)) >>> 0;
-        h = ((h << 7) ^ h) >>> 0;
-        return h.toString(36);
-    }
-    
-    /**
-     * Cryptographically secure hash using SHA-256 (async).
-     * Use this for security-critical deduplication when possible.
+     * Cryptographically secure hash using SHA-256.
+     * Used for message deduplication with collision resistance.
      */
     async function hashMessageSecure(msg) {
         const encoder = new TextEncoder();
@@ -850,10 +834,11 @@
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(() => {
             if (dc && dc.readyState === 'open') {
-                // Store ping timestamp for correlation
-                pendingPing = { t: Date.now() };
+                // Use nonce for better correlation (timestamp + random)
+                const nonce = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+                pendingPing = { nonce, t: Date.now() };
                 try {
-                    dc.send(JSON.stringify({ type: 'ping', t: pendingPing.t }));
+                    dc.send(JSON.stringify({ type: 'ping', nonce: pendingPing.nonce, t: pendingPing.t }));
                 } catch (e) {
                     debug('Failed to send ping: ' + e.message, 'warn');
                 }
@@ -864,20 +849,21 @@
     function handlePing(data) {
         if (data.type === 'ping') {
             try {
-                dc.send(JSON.stringify({ type: 'pong', t: data.t }));
+                // Echo back the nonce and timestamp
+                dc.send(JSON.stringify({ type: 'pong', nonce: data.nonce, t: data.t }));
             } catch (e) {
                 debug('Failed to send pong: ' + e.message, 'warn');
             }
         } else if (data.type === 'pong' && pendingPing) {
-            // Correlate pong with pending ping to prevent out-of-order issues
-            if (typeof data.t === 'number' && data.t === pendingPing.t) {
+            // Correlate pong with pending ping using nonce for exact matching
+            if (data.nonce === pendingPing.nonce && typeof data.t === 'number' && data.t === pendingPing.t) {
                 stats.lastLatency = Date.now() - data.t;
                 stats.latencies.push(stats.lastLatency);
                 if (stats.latencies.length > 10) stats.latencies.shift();
                 pendingPing = null;
             } else {
-                debug('Pong timestamp mismatch or invalid', 'warn');
-                pendingPing = null;
+                debug('Pong nonce/timestamp mismatch - ignoring stale pong', 'warn');
+                // Don't clear pendingPing for mismatches - wait for correct pong
             }
         }
     }
@@ -1232,7 +1218,7 @@
             }
         };
 
-        dc.onmessage = (e) => {
+        dc.onmessage = async (e) => {
             try {
                 const data = JSON.parse(e.data);
                 if (data.type === 'ping' || data.type === 'pong') {
@@ -1241,20 +1227,24 @@
                 }
             } catch {}
             
-            // Replay detection (using sync hash for performance in message handler)
-            // NOTE: For higher security, consider using hashMessageSecure() in async context
-            const msgHash = hashMessageSync(e.data);
-            if (seenMessages.has(msgHash)) {
-                const replayEl = document.getElementById('sec-replay');
-                replayEl.textContent = '⚠ Replay detected!';
-                replayEl.className = 'status-check error';
-                debug('Replay detected!', 'error');
-                return;
-            }
-            seenMessages.add(msgHash);
-            if (seenMessages.size > 1000) {
-                const arr = Array.from(seenMessages);
-                seenMessages = new Set(arr.slice(-500));
+            // Cryptographically secure replay detection using SHA-256
+            try {
+                const msgHash = await hashMessageSecure(e.data);
+                if (seenMessages.has(msgHash)) {
+                    const replayEl = document.getElementById('sec-replay');
+                    replayEl.textContent = '⚠ Duplicate detected';
+                    replayEl.className = 'status-check error';
+                    debug('Duplicate message detected', 'warn');
+                    return;
+                }
+                seenMessages.add(msgHash);
+                if (seenMessages.size > 1000) {
+                    const arr = Array.from(seenMessages);
+                    seenMessages = new Set(arr.slice(-500));
+                }
+            } catch (hashError) {
+                debug('Hash error: ' + hashError.message, 'error');
+                // Continue processing even if hash fails (degraded mode)
             }
             
             const decrypted = decrypt(secretKey, e.data);

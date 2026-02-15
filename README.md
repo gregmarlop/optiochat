@@ -14,7 +14,7 @@ Optio Chat is different. After the initial handshake, messages flow directly bet
 - **12-Layer Encryption** — Classical ciphers (Caesar, Atbash, Vigenère, Substitution) in key-derived order
 - **No Logs** — Signal server keeps nothing in memory, writes nothing to disk
 - **Live Security Panel** — Real-time monitoring of connection health and anomalies
-- **Replay Detection** — Alerts if duplicate messages are detected
+- **Duplicate Detection** — SHA-256-based deduplication to filter duplicate messages
 - **Latency Monitoring** — Warns if connection shows suspicious delays
 - **STUN via Framasoft** — No Google, French non-profit, GDPR compliant
 
@@ -141,6 +141,109 @@ Update `SIGNAL_SERVER` in the HTML to point to your deployed server:
 
 ```javascript
 const SIGNAL_SERVER = 'wss://your-server.fly.dev';
+```
+
+## Security & Privacy Requirements
+
+### ⚠️ PRODUCTION DEPLOYMENT - REQUIRED
+
+1. **HTTPS/WSS Only**
+   - **NEVER** use HTTP or WS in production
+   - WebRTC requires secure contexts (HTTPS) for getUserMedia and other APIs
+   - Signal server must use WSS (WebSocket Secure)
+   - Use a reverse proxy (nginx, Caddy) with automatic HTTPS
+
+2. **Reverse Proxy Configuration**
+   ```nginx
+   # nginx example
+   server {
+       listen 443 ssl http2;
+       server_name chat.example.com;
+       
+       ssl_certificate /path/to/cert.pem;
+       ssl_certificate_key /path/to/key.pem;
+       
+       # HSTS (force HTTPS for 1 year)
+       add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+       
+       # CSP for client HTML
+       add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://chat.example.com" always;
+       
+       location / {
+           proxy_pass http://localhost:3000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection "upgrade";
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+       }
+   }
+   ```
+
+3. **Origin Security**
+   ```bash
+   # Allow specific origins (optional)
+   ALLOWED_ORIGINS="https://chat.example.com,https://chat2.example.com" node optio-signal-server.js
+   ```
+   - Default: same-origin only
+   - Production: set explicit allowlist
+
+4. **TURN Configuration**
+   - Configure TURN servers with short-lived credentials
+   - **NEVER** hardcode TURN credentials in client HTML
+   - Use a TURN REST API for dynamic credential generation
+   - Example: coturn with time-limited credentials
+
+   ```javascript
+   // DO NOT hardcode credentials
+   // Instead, fetch from your backend
+   const iceServers = [
+       { urls: 'stun:stun.framasoft.org' },
+       // Fetch TURN credentials from your secure API
+       await fetchTurnCredentials()
+   ];
+   ```
+
+5. **Content Security Policy (CSP)**
+   Serve the HTML file with these headers:
+   ```
+   Content-Security-Policy: default-src 'self'; 
+                           script-src 'self' 'unsafe-inline'; 
+                           style-src 'self' 'unsafe-inline'; 
+                           connect-src 'self' wss://your-server.com;
+                           img-src 'self' data:;
+                           font-src 'self';
+   ```
+
+### Privacy Features
+
+- ✅ **No tracking or analytics**
+- ✅ **No logging of:**
+  - Message contents
+  - Encryption keys
+  - SDP/ICE payloads
+  - IP addresses
+  - User identifiers
+- ✅ **Minimal debug logging** (disabled by default)
+- ✅ **Generic error messages** (no information leakage)
+
+### Security Features
+
+- ✅ **SHA-256 deduplication** (collision-resistant)
+- ✅ **Bounded LRU cache** (prevents memory exhaustion)
+- ✅ **IP-based rate limiting** (100 connections/min per IP)
+- ✅ **Per-connection rate limiting** (50 messages/sec)
+- ✅ **Origin validation** (same-origin or allowlist)
+- ✅ **Message size limits** (64KB max)
+- ✅ **Strict schema validation**
+- ✅ **Ping/pong correlation** (nonce-based, prevents replay)
+
+### Environment Variables
+
+```bash
+PORT=3000                    # Server port (default: 3000)
+DEBUG=1                      # Enable debug logging (default: off)
+ALLOWED_ORIGINS="https://..." # Origin allowlist (default: same-origin)
 ```
 
 ## Limitations

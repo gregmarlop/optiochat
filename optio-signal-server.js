@@ -1,14 +1,19 @@
 /**
- * Optio Signal Server v2.0
- * Servidor de señalización robusto para WebRTC
+ * Optio Signal Server v2.1 - Security Hardened
+ * Servidor de señalización robusto para WebRTC con mejoras de seguridad y privacidad
  * 
- * Features:
- * - HTTP health check para Fly.io
- * - Validación estricta de mensajes
- * - Room state machine (EMPTY → ONE_PEER → TWO_PEERS)
- * - Heartbeat + cleanup
- * - Rate limiting
- * - Idempotencia (duplicados ignorados)
+ * Security Features:
+ * - SHA-256 deduplication with bounded LRU cache
+ * - IP-based and per-connection rate limiting
+ * - Origin validation with allowlist
+ * - Strict message size and schema validation
+ * - Privacy-preserving logging (no sensitive data)
+ * - Generic error messages (no info leakage)
+ * 
+ * Privacy Features:
+ * - No tracking or analytics
+ * - No logging of message contents, keys, SDP/ICE, or IPs
+ * - Minimal debug logging (disabled by default)
  * 
  * MIT License - Copyright (c) 2026 Gregori M.
  */
@@ -21,29 +26,54 @@ const WebSocket = require('ws');
 const PORT = process.env.PORT || 3000;
 const HEARTBEAT_INTERVAL = 25000;
 const HEARTBEAT_TIMEOUT = 35000;
-const MAX_MESSAGE_SIZE = 65536;
-const RATE_LIMIT_WINDOW = 1000;
-const RATE_LIMIT_MAX = 50;
-const MAX_ROOM_AGE = 3600000;
+const MAX_MESSAGE_SIZE = 65536; // 64KB max message size
+const RATE_LIMIT_WINDOW = 1000; // Per-connection rate limit window
+const RATE_LIMIT_MAX = 50; // Max messages per window per connection
+const IP_RATE_LIMIT_WINDOW = 60000; // IP rate limit window (1 minute)
+const IP_RATE_LIMIT_MAX = 100; // Max connections per IP per minute
+const MAX_ROOM_AGE = 3600000; // 1 hour
+const MAX_SEEN_IDS = 100; // Max deduplication cache size per room
+const SEEN_ID_TTL = 300000; // 5 minutes TTL for seen IDs
+
+// Origin allowlist (empty = same-origin only)
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : [];
 
 // ============== STATE ==============
 const rooms = new Map();
 const clients = new WeakMap();
+const ipRateLimits = new Map(); // IP -> {count, windowStart}
 
-// ============== HELPERS ==============
-function log(level, msg, data = {}) {
-    if (process.env.DEBUG) {
-        console.log(JSON.stringify({ 
-            ts: new Date().toISOString(), 
-            level, 
-            msg, 
-            ...data 
-        }));
-    }
+// ============== SECURITY HELPERS ==============
+
+/**
+ * Privacy-preserving safe logger
+ * Redacts sensitive fields and only logs if DEBUG is enabled
+ */
+function safeLog(level, msg, data = {}) {
+    if (!process.env.DEBUG) return;
+    
+    // Redact sensitive fields
+    const safe = { ...data };
+    delete safe.data; // Signal data (SDP/ICE)
+    delete safe.sdp;
+    delete safe.ice;
+    delete safe.key;
+    delete safe.secret;
+    delete safe.message; // User messages
+    delete safe.ip; // IP addresses
+    
+    console.log(JSON.stringify({ 
+        ts: new Date().toISOString(), 
+        level, 
+        msg, 
+        ...safe 
+    }));
 }
 
 function generateId() {
-    return Math.random().toString(36).substring(2, 10);
+    return crypto.randomBytes(6).toString('base64url');
 }
 
 /**
@@ -58,20 +88,87 @@ function hashSignal(data) {
         .slice(0, 22);
 }
 
+/**
+ * Bounded LRU cache for seen message IDs
+ * Automatically removes oldest entries when size exceeds limit
+ */
+class BoundedSeenIds {
+    constructor(maxSize = 100, ttl = 300000) {
+        this.maxSize = maxSize;
+        this.ttl = ttl;
+        this.cache = new Map(); // id -> timestamp
+    }
+    
+    has(id) {
+        const timestamp = this.cache.get(id);
+        if (!timestamp) return false;
+        
+        // Check if expired
+        if (Date.now() - timestamp > this.ttl) {
+            this.cache.delete(id);
+            return false;
+        }
+        return true;
+    }
+    
+    add(id) {
+        // Remove expired entries
+        const now = Date.now();
+        for (const [key, timestamp] of this.cache.entries()) {
+            if (now - timestamp > this.ttl) {
+                this.cache.delete(key);
+            }
+        }
+        
+        // Add new entry
+        this.cache.set(id, now);
+        
+        // Enforce max size (LRU - remove oldest)
+        if (this.cache.size > this.maxSize) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+    }
+    
+    get size() {
+        return this.cache.size;
+    }
+}
+
 function validateMessage(data) {
-    if (!data || typeof data !== 'object') return { valid: false, error: 'Invalid JSON' };
-    if (!data.type || typeof data.type !== 'string') return { valid: false, error: 'Missing type' };
+    if (!data || typeof data !== 'object') {
+        return { valid: false, error: 'Invalid format' };
+    }
+    if (!data.type || typeof data.type !== 'string') {
+        return { valid: false, error: 'Invalid format' };
+    }
     
     const validTypes = ['create', 'join', 'signal', 'leave', 'pong'];
-    if (!validTypes.includes(data.type)) return { valid: false, error: 'Unknown type' };
+    if (!validTypes.includes(data.type)) {
+        return { valid: false, error: 'Invalid request' };
+    }
     
     if (data.type === 'create' || data.type === 'join') {
-        if (!data.room || typeof data.room !== 'string') return { valid: false, error: 'Missing room' };
-        if (data.room.length > 50) return { valid: false, error: 'Room too long' };
+        if (!data.room || typeof data.room !== 'string') {
+            return { valid: false, error: 'Invalid format' };
+        }
+        if (data.room.length > 50 || data.room.length < 3) {
+            return { valid: false, error: 'Invalid format' };
+        }
+        // Only allow alphanumeric and hyphens
+        if (!/^[a-z0-9-]+$/.test(data.room)) {
+            return { valid: false, error: 'Invalid format' };
+        }
     }
     
     if (data.type === 'signal') {
-        if (!data.data) return { valid: false, error: 'Missing signal data' };
+        if (!data.data) {
+            return { valid: false, error: 'Invalid format' };
+        }
+        // Validate signal data structure
+        if (typeof data.data !== 'object') {
+            return { valid: false, error: 'Invalid format' };
+        }
     }
     
     return { valid: true };
@@ -87,6 +184,50 @@ function checkRateLimit(client) {
     return client.msgCount <= RATE_LIMIT_MAX;
 }
 
+function checkIpRateLimit(ip) {
+    const now = Date.now();
+    let ipLimit = ipRateLimits.get(ip);
+    
+    if (!ipLimit || now - ipLimit.windowStart > IP_RATE_LIMIT_WINDOW) {
+        ipLimit = { count: 0, windowStart: now };
+        ipRateLimits.set(ip, ipLimit);
+    }
+    
+    ipLimit.count++;
+    
+    // Cleanup old IP entries periodically
+    if (ipRateLimits.size > 10000) {
+        for (const [key, value] of ipRateLimits.entries()) {
+            if (now - value.windowStart > IP_RATE_LIMIT_WINDOW * 2) {
+                ipRateLimits.delete(key);
+            }
+        }
+    }
+    
+    return ipLimit.count <= IP_RATE_LIMIT_MAX;
+}
+
+function validateOrigin(req) {
+    const origin = req.headers.origin;
+    
+    // No origin header = same-origin or non-browser client (allow)
+    if (!origin) return true;
+    
+    // If allowlist is empty, only allow same-origin
+    if (ALLOWED_ORIGINS.length === 0) {
+        const host = req.headers.host;
+        try {
+            const originUrl = new URL(origin);
+            return originUrl.host === host;
+        } catch {
+            return false;
+        }
+    }
+    
+    // Check against allowlist
+    return ALLOWED_ORIGINS.includes(origin);
+}
+
 function cleanupRoom(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
@@ -96,13 +237,13 @@ function cleanupRoom(roomCode) {
             try {
                 ws.send(JSON.stringify({ type: 'room-closed' }));
             } catch (e) {
-                log('warn', 'Failed to send room-closed message', { error: e.message });
+                safeLog('warn', 'Failed to send room-closed message', { error: e.message });
             }
         }
     });
     
     rooms.delete(roomCode);
-    log('info', 'Room cleaned up', { roomCode });
+    safeLog('info', 'Room cleaned up', { roomCode });
 }
 
 function cleanupClient(ws) {
@@ -117,7 +258,7 @@ function cleanupClient(ws) {
         try {
             other.send(JSON.stringify({ type: 'peer-left' }));
         } catch (e) {
-            log('warn', 'Failed to send peer-left message', { error: e.message });
+            safeLog('warn', 'Failed to send peer-left message', { error: e.message });
         }
     }
     
@@ -126,7 +267,7 @@ function cleanupClient(ws) {
     
     if (!room.host && !room.guest) {
         rooms.delete(client.roomCode);
-        log('info', 'Room deleted (empty)', { roomCode: client.roomCode });
+        safeLog('info', 'Room deleted (empty)', { roomCode: client.roomCode });
     } else {
         room.state = 'ONE';
     }
@@ -150,10 +291,26 @@ const server = http.createServer((req, res) => {
 // ============== WEBSOCKET SERVER ==============
 const wss = new WebSocket.Server({ 
     server,
-    maxPayload: MAX_MESSAGE_SIZE
+    maxPayload: MAX_MESSAGE_SIZE,
+    verifyClient: ({ req }) => {
+        // Origin validation
+        if (!validateOrigin(req)) {
+            safeLog('warn', 'Origin validation failed');
+            return false;
+        }
+        
+        // IP rate limiting
+        const ip = req.socket.remoteAddress;
+        if (!checkIpRateLimit(ip)) {
+            safeLog('warn', 'IP rate limit exceeded');
+            return false;
+        }
+        
+        return true;
+    }
 });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
     clients.set(ws, {
         id: generateId(),
         roomCode: null,
@@ -175,35 +332,38 @@ wss.on('connection', (ws) => {
         const client = clients.get(ws);
         if (!client) return;
         
+        // Per-connection rate limiting
         if (!checkRateLimit(client)) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Rate limited' }));
-            log('warn', 'Rate limited', { clientId: client.id });
+            ws.send(JSON.stringify({ type: 'error', message: 'Too many requests' }));
+            safeLog('warn', 'Rate limited', { clientId: client.id });
             return;
         }
         
+        // Parse message
         let msg;
         try {
             msg = JSON.parse(rawData.toString());
         } catch (e) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid format' }));
             return;
         }
         
+        // Validate message schema
         const validation = validateMessage(msg);
         if (!validation.valid) {
             ws.send(JSON.stringify({ type: 'error', message: validation.error }));
-            log('warn', 'Invalid message', { error: validation.error, clientId: client.id });
+            safeLog('warn', 'Invalid message', { error: validation.error, clientId: client.id });
             return;
         }
         
-        log('debug', 'Message received', { type: msg.type, clientId: client.id });
+        safeLog('debug', 'Message received', { type: msg.type, clientId: client.id });
 
         switch (msg.type) {
             case 'create': {
                 const roomCode = msg.room.toLowerCase().trim();
                 
                 if (rooms.has(roomCode)) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Room exists' }));
+                    ws.send(JSON.stringify({ type: 'error', message: 'Room unavailable' }));
                     return;
                 }
                 
@@ -212,14 +372,14 @@ wss.on('connection', (ws) => {
                     guest: null,
                     state: 'ONE',
                     createdAt: Date.now(),
-                    seenIds: new Set()
+                    seenIds: new BoundedSeenIds(MAX_SEEN_IDS, SEEN_ID_TTL)
                 });
                 
                 client.roomCode = roomCode;
                 client.isHost = true;
                 
                 ws.send(JSON.stringify({ type: 'created', room: roomCode }));
-                log('info', 'Room created', { roomCode, clientId: client.id });
+                safeLog('info', 'Room created', { roomCode, clientId: client.id });
                 break;
             }
 
@@ -233,7 +393,7 @@ wss.on('connection', (ws) => {
                 }
                 
                 if (room.state === 'TWO') {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Room full' }));
+                    ws.send(JSON.stringify({ type: 'error', message: 'Room unavailable' }));
                     return;
                 }
                 
@@ -249,7 +409,7 @@ wss.on('connection', (ws) => {
                     room.host.send(JSON.stringify({ type: 'peer-joined' }));
                 }
                 
-                log('info', 'Peer joined', { roomCode, clientId: client.id });
+                safeLog('info', 'Peer joined', { roomCode, clientId: client.id });
                 break;
             }
 
@@ -264,14 +424,10 @@ wss.on('connection', (ws) => {
                 
                 const msgId = hashSignal(msg.data);
                 if (room.seenIds.has(msgId)) {
-                    log('debug', 'Duplicate signal ignored', { clientId: client.id });
+                    safeLog('debug', 'Duplicate signal ignored', { clientId: client.id });
                     return;
                 }
                 room.seenIds.add(msgId);
-                if (room.seenIds.size > 200) {
-                    const arr = Array.from(room.seenIds);
-                    room.seenIds = new Set(arr.slice(-100));
-                }
                 
                 const target = room.host === ws ? room.guest : room.host;
                 if (target && target.readyState === WebSocket.OPEN) {
@@ -298,11 +454,11 @@ wss.on('connection', (ws) => {
         const client = clients.get(ws);
         const clientId = client?.id;
         cleanupClient(ws);
-        log('debug', 'Client disconnected', { clientId });
+        safeLog('debug', 'Client disconnected', { clientId });
     });
     
     ws.on('error', (err) => {
-        log('error', 'WebSocket error', { error: err.message });
+        safeLog('error', 'WebSocket error', { error: err.message });
     });
 });
 
@@ -310,7 +466,7 @@ wss.on('connection', (ws) => {
 const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (!ws.isAlive) {
-            log('debug', 'Terminating dead client');
+            safeLog('debug', 'Terminating dead client');
             cleanupClient(ws);
             return ws.terminate();
         }
@@ -346,7 +502,7 @@ const roomCleanupInterval = setInterval(() => {
             cleanupRoom(code);
         } else {
             rooms.delete(code);
-            log('info', 'Room cleaned (no peers)', { roomCode: code });
+            safeLog('info', 'Room cleaned (no peers)', { roomCode: code });
         }
     });
 }, 60000);
@@ -359,11 +515,13 @@ server.listen(PORT, () => {
 ▒██░  ██▒▓██░ ██▓▒▒ ▓██░ ▒░▒██▒▒██░  ██▒
 ▒██   ██░▒██▄█▓▒ ▒░ ▓██▓ ░ ░██░▒██   ██░
 ░ ████▓▒░▒██▒ ░  ░  ▒██▒ ░ ░██░░ ████▓▒░
-           SIGNAL SERVER v2.0
+           SIGNAL SERVER v2.1
 
 [*] Port: ${PORT}
 [*] Health: http://localhost:${PORT}/health
 [*] Debug: ${process.env.DEBUG ? 'ON' : 'OFF (set DEBUG=1)'}
+[*] Origin checking: ${ALLOWED_ORIGINS.length > 0 ? 'Allowlist' : 'Same-origin'}
+[!] WARNING: Use HTTPS/WSS in production
 `);
 });
 
@@ -378,7 +536,7 @@ process.on('SIGTERM', () => {
             ws.send(JSON.stringify({ type: 'server-shutdown' }));
             ws.close();
         } catch (e) {
-            log('warn', 'Failed to notify client of shutdown', { error: e.message });
+            safeLog('warn', 'Failed to notify client of shutdown', { error: e.message });
         }
     });
     
