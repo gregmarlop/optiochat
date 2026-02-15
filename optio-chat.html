@@ -572,7 +572,49 @@
     let reconnectTimer = null;
     let connectionTimer = null;
     let iceCandidateQueue = [];  // Cola para candidates que llegan antes de remoteDescription
-    let seenMessages = new Set();
+    let seenMessages = new BoundedLRUSet({ max: 500, ttlMs: 5 * 60 * 1000 });
+    // Intervals (privacy-first: no background logging, but avoid leaks)
+    let statsInterval = null;
+
+    class BoundedLRUSet {
+        constructor({ max, ttlMs }) {
+            this.max = max;
+            this.ttlMs = ttlMs;
+            this.map = new Map(); // value -> lastSeenTs
+        }
+        _purge(now) {
+            for (const [v, ts] of this.map) {
+                if (now - ts <= this.ttlMs) break;
+                this.map.delete(v);
+            }
+        }
+        has(v) {
+            const now = Date.now();
+            this._purge(now);
+            const ts = this.map.get(v);
+            if (ts == null) return false;
+            if (now - ts > this.ttlMs) {
+                this.map.delete(v);
+                return false;
+            }
+            // refresh LRU
+            this.map.delete(v);
+            this.map.set(v, now);
+            return true;
+        }
+        add(v) {
+            const now = Date.now();
+            this._purge(now);
+            if (this.map.has(v)) this.map.delete(v);
+            this.map.set(v, now);
+            while (this.map.size > this.max) {
+                const oldest = this.map.keys().next().value;
+                if (oldest == null) break;
+                this.map.delete(oldest);
+            }
+        }
+    }
+
     
     // Perfect Negotiation
     let makingOffer = false;
@@ -592,27 +634,9 @@
         latencies: [],
         lastLatency: 0
     };
-    
-    // Debug
-    const debugLog = [];
-    
-    function debug(msg, level = 'info') {
-        const entry = { ts: new Date().toISOString().substr(11, 8), msg, level };
-        debugLog.push(entry);
-        if (debugLog.length > 50) debugLog.shift();
-        updateDebugLog();
-        console.log(`[${level}] ${msg}`);
-    }
-    
-    function updateDebugLog() {
-        const el = document.getElementById('debug-log');
-        if (el) {
-            el.innerHTML = debugLog.slice(-15).map(e => 
-                `<div class="${e.level}">${e.ts} ${e.msg}</div>`
-            ).join('');
-            el.scrollTop = el.scrollHeight;
-        }
-    }
+    // Debug (privacy-first: no logs)
+    function debug(_) { /* intentionally empty */ }
+    function updateDebugLog() { /* intentionally empty */ }
 
     // ============== UI HELPERS ==============
     function generateRoomCode() {
@@ -646,7 +670,8 @@
         document.getElementById('chat-room').textContent = roomCode;
         enableChat(true);
         stats.connectedAt = Date.now();
-        setInterval(updateStats, 1000);
+        if (statsInterval) clearInterval(statsInterval);
+        statsInterval = setInterval(updateStats, 1000);
         startPing();
     }
     
@@ -803,25 +828,50 @@
     let pingInterval = null;
     let pendingPing = null;
 
+    function makeNonce() {
+        const a = new Uint32Array(2);
+        crypto.getRandomValues(a);
+        return a[0].toString(16) + a[1].toString(16);
+    }
+
     function startPing() {
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(() => {
             if (dc && dc.readyState === 'open') {
-                pendingPing = Date.now();
+                pendingPing = { id: makeNonce(), t: Date.now() };
                 try {
-                    dc.send(JSON.stringify({ type: 'ping', t: pendingPing }));
-                } catch (e) {}
+                    dc.send(JSON.stringify({ type: 'ping', id: pendingPing.id, t: pendingPing.t }));
+                } catch (e) {
+                    // no-op (privacy-first)
+                }
             }
         }, 5000);
     }
 
     function handlePing(data) {
+        if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
+
         if (data.type === 'ping') {
-            try {
-                dc.send(JSON.stringify({ type: 'pong', t: data.t }));
-            } catch (e) {}
-        } else if (data.type === 'pong' && pendingPing) {
-            stats.lastLatency = Date.now() - data.t;
+            // Echo back the same id/t to allow correlation
+            if (dc && dc.readyState === 'open') {
+                try {
+                    dc.send(JSON.stringify({ type: 'pong', id: data.id, t: data.t }));
+                } catch (e) {
+                    // no-op (privacy-first)
+                }
+            }
+            return;
+        }
+
+        if (data.type === 'pong') {
+            if (!pendingPing) return;
+            if (typeof data.id !== 'string' || typeof data.t !== 'number') return;
+            // Exact match required; reject stale/out-of-order pongs
+            if (data.id !== pendingPing.id || data.t !== pendingPing.t) return;
+            const now = Date.now();
+            if (data.t <= 0 || data.t > now) return;
+
+            stats.lastLatency = now - data.t;
             stats.latencies.push(stats.lastLatency);
             if (stats.latencies.length > 10) stats.latencies.shift();
             pendingPing = null;
@@ -830,8 +880,6 @@
 
     // ============== CLEANUP ==============
     function cleanup() {
-        debug('Cleaning up...');
-        
         if (connectionTimer) {
             clearTimeout(connectionTimer);
             connectionTimer = null;
@@ -843,6 +891,10 @@
         if (pingInterval) {
             clearInterval(pingInterval);
             pingInterval = null;
+        }
+        if (statsInterval) {
+            clearInterval(statsInterval);
+            statsInterval = null;
         }
         
         if (dc) {
@@ -966,7 +1018,9 @@
                 break;
                 
             case 'ping':
-                ws.send(JSON.stringify({ type: 'pong' }));
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try { ws.send(JSON.stringify({ type: 'pong' })); } catch (e) {}
+                }
                 break;
                 
             case 'error':
@@ -1047,7 +1101,11 @@
             try {
                 makingOffer = true;
                 await pc.setLocalDescription();
-                ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        try { if (ws && ws.readyState === WebSocket.OPEN) {
+                        try { ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } })); } catch (e) {}
+                    } } catch (e) {}
+                    }
             } catch (e) {
                 debug('Negotiation error: ' + e.message, 'error');
             } finally {
@@ -1088,7 +1146,11 @@
                 
                 if (description.type === 'offer') {
                     await pc.setLocalDescription();
-                    ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } }));
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        try { if (ws && ws.readyState === WebSocket.OPEN) {
+                        try { ws.send(JSON.stringify({ type: 'signal', data: { sdp: pc.localDescription } })); } catch (e) {}
+                    } } catch (e) {}
+                    }
                 }
             }
             
@@ -1135,7 +1197,9 @@
         reconnectTimer = setTimeout(async () => {
             try {
                 await connectSignal();
-                ws.send(JSON.stringify({ type: 'join', room: roomCode }));
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try { ws.send(JSON.stringify({ type: 'join', room: roomCode })); } catch (e) {}
+                }
             } catch (e) {
                 debug('Reconnect failed: ' + e.message, 'error');
                 attemptReconnect();
@@ -1170,32 +1234,29 @@
                     return;
                 }
             } catch {}
-            
-            // Replay detection
-            const msgHash = e.data.substring(0, 20);
-            if (seenMessages.has(msgHash)) {
-                const replayEl = document.getElementById('sec-replay');
-                replayEl.textContent = '⚠ Replay detected!';
-                replayEl.className = 'status-check error';
-                debug('Replay detected!', 'error');
+            // Duplicate protection (privacy-first): exact ciphertext dedupe, bounded TTL+LRU
+            if (seenMessages.has(e.data)) {
+                const dupEl = document.getElementById('sec-replay');
+                if (dupEl) {
+                    dupEl.textContent = 'Duplicate ignored';
+                    dupEl.className = 'status-check warn';
+                }
                 return;
             }
-            seenMessages.add(msgHash);
-            if (seenMessages.size > 1000) {
-                const arr = Array.from(seenMessages);
-                seenMessages = new Set(arr.slice(-500));
-            }
-            
+            seenMessages.add(e.data);
             const decrypted = decrypt(secretKey, e.data);
             stats.bytesRecv += e.data.length;
-            
-            if (decrypted) {
+
+            if (decrypted === null) {
+                stats.decryptErrors++;
+                addMessage('[decrypt error]', 'error');
+                return;
+            }
+
+            // Empty string is allowed but ignored as a chat message
+            if (decrypted.length > 0) {
                 stats.msgRecv++;
                 addMessage(decrypted, 'received');
-            } else {
-                stats.decryptErrors++;
-                debug('Decrypt error', 'error');
-                addMessage('[decrypt error]', 'error');
             }
         };
 
@@ -1225,7 +1286,9 @@
             roomCode = generateRoomCode();
             isHost = true;
 
-            ws.send(JSON.stringify({ type: 'create', room: roomCode }));
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                try { ws.send(JSON.stringify({ type: 'create', room: roomCode })); } catch (e) {}
+            }
             
             document.getElementById('room-code').textContent = roomCode;
             document.getElementById('setup-start').classList.add('hidden');
@@ -1252,7 +1315,9 @@
         try {
             await connectSignal();
             isHost = false;
-            ws.send(JSON.stringify({ type: 'join', room: roomCode }));
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                try { ws.send(JSON.stringify({ type: 'join', room: roomCode })); } catch (e) {}
+            }
         } catch (e) {
             debug('Join room error: ' + e.message, 'error');
             updateConnectionUI('failed', e.message);
